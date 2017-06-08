@@ -1,7 +1,9 @@
 const EventEmitter = require('events').EventEmitter;
 const util = require('util');
-const winston = require('winston-color');
-const net = require('net')
+const winston = require('winston');
+const net = require('net');
+const BER = require('asn1').Ber;
+const ember = require('./ember.js');
 
 const S101Codec = require('./s101.js');
 
@@ -22,6 +24,18 @@ function S101Client(address, port) {
 
     self.codec.on('keepaliveReq', () => {
         self.sendKeepaliveResponse();
+    });
+
+    self.codec.on('emberPacket', (packet) => {
+        self.emit('emberPacket', packet);
+
+        var ber = new BER.Reader(packet);
+        try {
+            var root = ember.Root.decode(ber);
+            self.emit('emberTree', root);
+        } catch(e) {
+            console.log(e);
+        }
     });
 }
 
@@ -57,6 +71,28 @@ S101Client.prototype.sendKeepaliveResponse = function() {
         self.socket.write(self.codec.keepAliveResponse());
         winston.debug('sent keepalive response');
     }
+}
+
+S101Client.prototype.sendBER = function(data) {
+    var self = this;
+    var frames = self.codec.encodeBER(data);
+    for(var i=0; i<frames.length; i++) {
+        //console.log(frames);
+        self.socket.write(frames[i]);
+        winston.debug('sent frame');
+        //console.log(frames[i], 
+        //    self.codec.validateFrame(frames[i].slice(1, frames[i].length-1)));
+    }
+}
+
+S101Client.prototype.sendBERNode = function(node) {
+    var self=this;
+    var writer = new BER.Writer();
+    node.encode(writer);
+    self.sendBER(writer.buffer);
+
+    var reader = new BER.Reader(writer.buffer);
+    console.log(util.inspect(ember.Root.decode(reader), {depth:null}));
 }
 
 module.exports = S101Client;

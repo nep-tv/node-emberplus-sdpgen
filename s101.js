@@ -1,7 +1,8 @@
 const EventEmitter = require('events').EventEmitter;
 const util = require('util');
 const SmartBuffer = require('smart-buffer').SmartBuffer;
-const winston = require('winston-color');
+const winston = require('winston');
+const BER = require('asn1').Ber;
 
 const S101_BOF = 0xFE;
 const S101_EOF = 0xFF;
@@ -26,6 +27,8 @@ const FLAG_EMPTY_PACKET = 0x20;
 const FLAG_MULTI_PACKET = 0x00;
 
 const DTD_GLOW = 0x01;
+const DTD_VERSION_MAJOR = 0x02;
+const DTD_VERSION_MINOR = 0x05;
 
 const CRC_TABLE = [
     0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x74bf, 
@@ -96,7 +99,7 @@ S101Codec.prototype.dataIn = function(buf) {
 
 S101Codec.prototype.handleFrame = function(frame) {
     var self = this;
-    console.log(frame.toBuffer());
+    //console.log(frame.toBuffer());
     if(!validateFrame(frame.toBuffer())) {
         winston.error('dropping frame of length %d with invalid CRC', 
             frame.length);
@@ -185,11 +188,55 @@ S101Codec.prototype.handleEmberPacket = function(packet) {
     var self = this;
 
     winston.info('ember packet');
-    console.log(packet);
+    //console.log(packet);
+    self.emit('emberPacket', packet.toBuffer());
+}
+
+var makeBERFrame = function(flags, data) {
+    var frame = new SmartBuffer();
+    frame.writeUInt8(S101_BOF);
+    frame.writeUInt8(SLOT);
+    frame.writeUInt8(MSG_EMBER);
+    frame.writeUInt8(CMD_EMBER);
+    frame.writeUInt8(VERSION);
+    frame.writeUInt8(flags);
+    frame.writeUInt8(DTD_GLOW);
+    frame.writeUInt8(2); // number of app bytes
+    frame.writeUInt8(DTD_VERSION_MINOR);
+    frame.writeUInt8(DTD_VERSION_MAJOR);
+    frame.writeBuffer(data);
+    return finalizeBuffer(frame);
 }
 
 S101Codec.prototype.encodeBER = function(data) {
-    
+    var frames = [];
+    var encbuf = new SmartBuffer();
+    for(var i=0; i<data.length; i++) {
+        var b = data.readUInt8(i);
+        if(b < S101_INV) {
+            encbuf.writeUInt8(b);
+        } else {
+            encbuf.writeUInt8(S101_CE);
+            encbuf.writeUInt8(b ^ S101_XOR);
+        }
+        
+        if(encbuf.length >= 1024 && i < data.length-1) {
+            if(frames.length == 0) {
+                frames.push(makeBERFrame(FLAG_FIRST_MULTI_PACKET, encbuf.toBuffer()));
+            } else {
+                frames.push(makeBERFrame(FLAG_MULTI_PACKET, encbuf.toBuffer()));
+            }
+            encbuf.clear();
+        }
+    }
+
+    if(frames.length == 0) {
+        frames.push(makeBERFrame(FLAG_SINGLE_PACKET, encbuf.toBuffer()));
+    } else {
+        frames.push(makeBERFrame(FLAG_LAST_MULTI_PACKET, encbuf.toBuffer()));
+    }
+
+    return frames;
 };
 
 S101Codec.prototype.keepAliveRequest = function() {
@@ -229,5 +276,7 @@ var calculateCRC = function(buf) {
 var validateFrame = function(buf) {
     return calculateCRC(buf) == 0xF0B8;    
 }
+
+S101Codec.prototype.validateFrame = validateFrame;
 
 module.exports = S101Codec;

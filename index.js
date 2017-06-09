@@ -6,7 +6,7 @@ const DeviceTree = require('./device.js');
 
 tree = new DeviceTree('patchbay.media.mit.edu', 9998);
 tree.on('ready', () => {
-    tree.getNodeByPath(['R3LAYVirtualPatchBay', 'Logical', 'SinkSourceMatrix', 'Monitor Out'], (error, node) => {
+    tree.getNodeByPath(['R3LAYVirtualPatchBay', 'Sources', 'Monitor In', 'Amplification'], (error, node) => {
         if(error) {
             console.log(error);
             return;

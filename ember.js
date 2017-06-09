@@ -3,6 +3,7 @@ const util = require('util');
 
 var APPLICATION = function(x) { return x | 0x60; };
 var CONTEXT = function(x) { return x | 0xa0; };
+var UNIVERSAL = function(x) { return x; };
 
 const EMBER_SET = 0x20 | 17;
 const EMBER_STRING = 12;
@@ -17,6 +18,24 @@ BER.Reader.prototype.getSequence = function(tag) {
 
     var buf = this.readString(tag, true);
     return new BER.Reader(buf);
+}
+
+BER.Reader.prototype.readValue = function() {
+    var tag = this.peek(tag);
+    if(tag == EMBER_STRING) {
+        return this.readString(EMBER_STRING);
+    } else if(tag == UNIVERSAL(2)) {
+        return this.readInt();
+    } else if(tag == UNIVERSAL(9)) {
+        // real, need to write decoder
+        throw new UnimplementedEmberTypeError(tag);
+    } else if(tag == UNIVERSAL(1)) {
+        return this.readBoolean();
+    } else if(tag == UNIVERSAL(4)) {
+        return this.readString(UNIVERSAL(4), true);
+    } else {
+        throw new UnimplementedEmberTypeError(tag);
+    }
 }
 
 /****************************************************************************
@@ -241,7 +260,7 @@ Element.decode = function(ber) {
     var tag = ber.peek();
     if(tag == APPLICATION(1)) {
         // Parameter
-        throw new UnimplementedEmberTypeError(tag);
+        return Parameter.decode(ber);
     } else if(tag == APPLICATION(3)) {
         // Node
         return Node.decode(ber);
@@ -451,11 +470,132 @@ Command.prototype.encode = function(ber) {
 
 module.exports.Command = Command;
 
+/****************************************************************************
+ * Parameter
+ ***************************************************************************/
+
+function Parameter(number) {
+    Parameter.super_.call(this);
+    if(number !== undefined)
+        this.number = number;
+}
+
+util.inherits(Parameter, TreeNode);
+
+Parameter.decode = function(ber) {
+    var p = new Parameter();
+    ber = ber.getSequence(APPLICATION(1));
+
+    while(ber.remain > 0) {
+        var tag = ber.readSequence();
+        if(tag == CONTEXT(0)) {
+            p.number = ber.readInt();
+        } else if(tag == CONTEXT(1)) {
+            p.contents = ParameterContents.decode(ber);
+        } else if(tag == CONTEXT(2)) {
+            p.children = [];
+            var seq = ber.getSequence(APPLICATION(4));
+            while(seq.remain > 0) {
+                seq.readSequence(CONTEXT(0));
+                p.addChild(Element.decode(seq));
+            }
+        } else {
+            throw new UnimplementedEmberTypeError(tag);
+        }
+    }
+    return p;
+}
+
+function ParameterContents() {};
+
+ParameterContents.decode = function(ber) {
+    var pc = new ParameterContents();
+    ber = ber.getSequence(EMBER_SET);
+
+    while(ber.remain > 0) {
+        var tag = ber.readSequence();
+        if(tag == CONTEXT(0)) {
+            pc.identifier = ber.readString(EMBER_STRING);
+        } else if(tag == CONTEXT(1)) {
+            pc.description = ber.readString(EMBER_STRING);
+        } else if(tag == CONTEXT(2)) {
+            pc.value = ber.readValue();
+        } else if(tag == CONTEXT(3)) {
+            pc.minimum = ber.readValue();
+        } else if(tag == CONTEXT(4)) {
+            pc.maximum = ber.readValue();
+        } else if(tag == CONTEXT(5)) {
+            var a = ber.readInt();
+            if(a == 0) {
+                pc.access = 'none';
+            } else if(a == 1) {
+                pc.access = 'read';
+            } else if(a == 2) {
+                pc.access = 'write';
+            } else if(a == 3) {
+                pc.access = 'readWrite';
+            } else {
+                pc.access = 'read';
+            }
+        } else if(tag == CONTEXT(6)) {
+            pc.format = ber.readString(EMBER_STRING);
+        } else if(tag == CONTEXT(7)) {
+            pc.enumeration = ber.readString(EMBER_STRING);
+        } else if(tag == CONTEXT(8)) {
+            pc.factor = ber.readInt();
+        } else if(tag == CONTEXT(9)) {
+            pc.isOnline = ber.readBoolean();
+        } else if(tag == CONTEXT(10)) {
+            pc.formula = ber.readString(EMBER_STRING);
+        } else if(tag == CONTEXT(11)) {
+            pc.step = ber.readInt();
+        } else if(tag == CONTEXT(12)) {
+            pc.default = ber.readValue();
+        } else if(tag == CONTEXT(13)) {
+            var t = ber.readInt();
+            if(t == 1) {
+                pc.type = 'integer';
+            } else if(t == 2) {
+                pc.type = 'real';
+            } else if(t == 3) {
+                pc.type = 'string';
+            } else if(t == 4) {
+                pc.type = 'boolean';
+            } else if(t == 5) {
+                pc.type = 'trigger';
+            } else if(t == 6) {
+                pc.type = 'enum';
+            } else if(t == 7) {
+                pc.type = 'octets';
+            } else {
+                pc.type = 'invalid';
+            }
+        } else if(tag == CONTEXT(14)) {
+            pc.streamIdentifier = ber.readInt();
+        } else if(tag == CONTEXT(15)) {
+            pc.enumMap = StringIntegerCollection.decode(ber);
+        } else if(tag == CONTEXT(16)) {
+            // streamDescriptor
+            throw new UnimplementedEmberTypeError(tag);
+        } else if(tag == CONTEXT(17)) {
+            pc.schemaIdentifiers = ber.readString(EMBER_STRING);
+        } else {
+            throw new UnimplementedEmberTypeError(tag);
+        }
+    }
+
+    return pc;
+}
+
+/****************************************************************************
+ * UnimplementedEmberType error
+ ***************************************************************************/
+
 function UnimplementedEmberTypeError(tag) {
     Error.captureStackTrace(this, this.constructor);
     this.name = this.constructor.name;
     var identifier = (tag & 0xC0) >> 6;
-    var value = (tag & 0x3F).toString();
+    var value = (tag & 0x1F).toString();
     var tagStr = tag.toString();
     if(identifier == 0) {
         tagStr = "[UNIVERSAL " + value + "]";

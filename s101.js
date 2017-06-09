@@ -258,8 +258,24 @@ S101Codec.prototype.keepAliveResponse = function() {
 }
 
 var finalizeBuffer = function(smartbuf) {
-    var crc = calculateCRC(smartbuf.toBuffer().slice(1, smartbuf.length));
-    smartbuf.writeUInt16LE((~crc) & 0xFFFF);
+    var crc = (~calculateCRC(smartbuf.toBuffer().slice(1, smartbuf.length))) & 0xFFFF;
+    var crc_hi = crc >> 8;
+    var crc_lo = crc & 0xFF;
+
+    if(crc_lo < S101_INV) {
+        smartbuf.writeUInt8(crc_lo);
+    } else {
+        smartbuf.writeUInt8(S101_CE);
+        smartbuf.writeUInt8(crc_lo ^ S101_XOR);
+    }
+    
+    if(crc_hi < S101_INV) {
+        smartbuf.writeUInt8(crc_hi);
+    } else {
+        smartbuf.writeUInt8(S101_CE);
+        smartbuf.writeUInt8(crc_hi ^ S101_XOR);
+    }
+    
     smartbuf.writeUInt8(S101_EOF);
     return smartbuf.toBuffer();
 }

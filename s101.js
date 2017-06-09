@@ -2,7 +2,7 @@ const EventEmitter = require('events').EventEmitter;
 const util = require('util');
 const SmartBuffer = require('smart-buffer').SmartBuffer;
 const winston = require('winston');
-const BER = require('asn1').Ber;
+const BER = require('./ber.js');
 
 const S101_BOF = 0xFE;
 const S101_EOF = 0xFF;

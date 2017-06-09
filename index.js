@@ -1,6 +1,6 @@
 const S101Client = require('./client.js');
 const ember = require('./ember.js');
-const BER = require('asn1').Ber;
+const BER = require('./ber.js');
 const util = require('util');
 const DeviceTree = require('./device.js');
 

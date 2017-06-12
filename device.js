@@ -12,7 +12,7 @@ function DeviceTree(host, port) {
 
     self.client.on('connected', () => {
         self.client.sendBERNode(this.root.getDirectory((node) => {
-            console.log("Ready!");
+            //console.log("Ready!");
             self.emit('ready');
         }));
     });
@@ -29,19 +29,19 @@ DeviceTree.prototype.handleRoot = function(root) {
 
     var callbacks = self.root.update(root);
 
-    if(root.elements === undefined) {
-        // unimplemented
-        return;
+    if(root.elements !== undefined) {
+        for(var i=0; i<root.elements.length; i++) {
+            callbacks = callbacks.concat(this.handleNode(this.root, root.elements[i]));    
+        }
+
+        //console.log('handleRoot: ', callbacks);
+
+        // Fire callbacks once entire tree has been updated
+        for(var i=0; i<callbacks.length; i++) {
+            callbacks[i]();
+        }
     }
 
-    for(var i=0; i<root.elements.length; i++) {
-        callbacks = callbacks.concat(this.handleNode(this.root, root.elements[i]));    
-    }
-
-    console.log('handleRoot: ', callbacks);
-    for(var i=0; i<callbacks.length; i++) {
-        callbacks[i]();
-    }
 }
 
 DeviceTree.prototype.handleNode = function(parent, node) {
@@ -61,11 +61,15 @@ DeviceTree.prototype.handleNode = function(parent, node) {
         }
     }
 
-    console.log('handleNode: ', callbacks);
+    //console.log('handleNode: ', callbacks);
     return callbacks;
 }
 
 DeviceTree.prototype.getNodeByPath = function(path, callback) {
+    if(typeof path === 'string') {
+        path = path.split('/');
+    }
+
     this.root.getNodeByPath(this.client, path, callback);
 }
 

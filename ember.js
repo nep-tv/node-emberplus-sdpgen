@@ -1,6 +1,7 @@
 const BER = require('./ber.js');
 const errors = require('./errors.js');
 const util = require('util');
+const Enum = require('enum');
 
 module.exports.GetDirectory = 32;
 
@@ -10,7 +11,7 @@ module.exports.GetDirectory = 32;
 
 function Root() {
     Root.super_.call(this);
-    this._parent = null;
+    //Object.defineProperty(this, '_parent', {value: null, enumerable: false});
 };
 
 util.inherits(Root, TreeNode);
@@ -63,14 +64,6 @@ Root.prototype.encode = function(ber) {
     ber.endSequence(); // BER.APPLICATION(0)
 }
 
-/*
-Root.prototype.getDirectory = function(callback) {
-    var r = this.getMinimal();
-    r.addElement(new Command(32));
-    return r;
-}
-*/
-
 Root.prototype.getChildren = function() {
     if(this.elements !== undefined) {
         return this.elements;
@@ -85,9 +78,12 @@ module.exports.Root = Root;
  ***************************************************************************/
 
 function TreeNode() {
-    this._parent = null;
-    this._single_callbacks = [];
-    this._callbacks = []
+    Object.defineProperty(this, '_parent', {value: null, enumerable: false, writable: true});
+    Object.defineProperty(this, '_single_callbacks', {value: [], enumerable: false, writable: true});
+    Object.defineProperty(this, '_callbacks', {value: [], enumerable: false, writable: true});
+    //this._parent = null;
+    //this._single_callbacks = [];
+    //this._callbacks = []
 }
 
 TreeNode.prototype.addChild = function(child) {
@@ -186,12 +182,10 @@ TreeNode.prototype.getNodeByPath = function(client, path, callback) {
         return;
     }
    
-    console.log('searching: %s', path[0]);
     var child = self.getElement(path[0]);
     if(child !== null) {
         child.getNodeByPath(client, path.slice(1), callback);
     } else {
-        console.log('getDirectory: %s', path[0]);
         client.sendBERNode(self.getDirectory((node) => {
             child = node.getElement(path[0]);
             if(child === null) {
@@ -449,7 +443,6 @@ function Parameter(number) {
 util.inherits(Parameter, TreeNode);
 
 Parameter.decode = function(ber) {
-    console.log('Parameter.decode');
     var p = new Parameter();
     ber = ber.getSequence(BER.APPLICATION(1));
 
@@ -471,14 +464,29 @@ Parameter.decode = function(ber) {
         }
     }
 
-    console.log(p.number);
     return p;
 }
+
+var ParameterAccess = new Enum({
+    none: 0,
+    read: 1,
+    write: 2,
+    readWrite: 3
+});
+
+var ParameterType = new Enum({
+    integer: 1,
+    real: 2,
+    string: 3,
+    boolean: 4,
+    trigger: 5,
+    enum: 6,
+    octets: 7
+});
 
 function ParameterContents() {};
 
 ParameterContents.decode = function(ber) {
-    console.log('ParameterContents.decode');
     var pc = new ParameterContents();
     ber = ber.getSequence(BER.EMBER_SET);
 
@@ -495,18 +503,7 @@ ParameterContents.decode = function(ber) {
         } else if(tag == BER.CONTEXT(4)) {
             pc.maximum = ber.readValue();
         } else if(tag == BER.CONTEXT(5)) {
-            var a = ber.readInt();
-            if(a == 0) {
-                pc.access = 'none';
-            } else if(a == 1) {
-                pc.access = 'read';
-            } else if(a == 2) {
-                pc.access = 'write';
-            } else if(a == 3) {
-                pc.access = 'readWrite';
-            } else {
-                pc.access = 'read';
-            }
+            pc.access = ParameterAccess.get(ber.readInt());
         } else if(tag == BER.CONTEXT(6)) {
             pc.format = ber.readString(BER.EMBER_STRING);
         } else if(tag == BER.CONTEXT(7)) {
@@ -522,32 +519,13 @@ ParameterContents.decode = function(ber) {
         } else if(tag == BER.CONTEXT(12)) {
             pc.default = ber.readValue();
         } else if(tag == BER.CONTEXT(13)) {
-            var t = ber.readInt();
-            if(t == 1) {
-                pc.type = 'integer';
-            } else if(t == 2) {
-                pc.type = 'real';
-            } else if(t == 3) {
-                pc.type = 'string';
-            } else if(t == 4) {
-                pc.type = 'boolean';
-            } else if(t == 5) {
-                pc.type = 'trigger';
-            } else if(t == 6) {
-                pc.type = 'enum';
-            } else if(t == 7) {
-                pc.type = 'octets';
-            } else {
-                pc.type = 'invalid';
-            }
+            pc.type = ParameterType.get(ber.readInt());
         } else if(tag == BER.CONTEXT(14)) {
             pc.streamIdentifier = ber.readInt();
         } else if(tag == BER.CONTEXT(15)) {
             pc.enumMap = StringIntegerCollection.decode(ber);
         } else if(tag == BER.CONTEXT(16)) {
-            // streamDescriptor
-            ber.getSequence(0x6c);
-            //throw new errors.UnimplementedEmberTypeError(tag);
+            pc.streamDescriptor = StreamDescription.decode(ber);
         } else if(tag == BER.CONTEXT(17)) {
             pc.schemaIdentifiers = ber.readString(BER.EMBER_STRING);
         } else {
@@ -556,6 +534,165 @@ ParameterContents.decode = function(ber) {
     }
 
     return pc;
+}
+
+var writeIfDefined = function(ber, property, writer, outer, inner) {
+    if(property !== undefined) {
+        ber.startSequence(BER.CONTEXT(outer));
+        writer(property, inner);
+        ber.endSequence();
+    }
+}
+
+var writeIfDefinedEnum = function(ber, property, type, writer, outer, inner) {
+    if(property !== undefined) {
+        ber.startSequence(BER.CONTEXT(outer));
+        if(property.value !== undefined) {
+            writer(property.value, inner);
+        } else {
+            writer(type.get(property), inner);
+        }
+        ber.endSequence();
+    }
+}
+
+ParameterContents.prototype.encode = function(ber) {
+    ber.startSequence(BER.EMBER_SET);
+    
+    writeIfDefined(ber, this.identifier, ber.writeString, 0, BER.EMBER_STRING);
+    writeIfDefined(ber, this.description, ber.writeString, 1, BER.EMBER_STRING);
+    writeIfDefined(ber, this.value, ber.writeValue, 2);
+    writeIfDefined(ber, this.minimum, ber.writeValue, 3);
+    writeIfDefined(ber, this.maximum, ber.writeValue, 4);
+    writeIfDefinedEnum(ber, this.access, ParameterAccess, ber.writeInt, 5);
+    writeIfDefined(ber, this.format, ber.writeString, 6, BER.EMBER_STRING);
+    writeIfDefined(ber, this.enumeration, ber.writeString, 7, BER.EMBER_STRING);
+    writeIfDefined(ber, this.factor, ber.writeInt, 8);
+    writeIfDefined(ber, this.isOnline, ber.writeBoolean, 9);
+    writeIfDefined(ber, this.formula, ber.writeString, 10, BER.EMBER_STRING);
+    writeIfDefined(ber, this.step. ber.writeInt, 11);
+    writeIfDefined(ber, this.default, ber.writeValue, 12);
+    writeIfDefinedEnum(ber, this.type, ParameterType, ber.writeInt, 13);
+    writeIfDefined(ber, this.streamIdentifier, ber.writeInt, 14);
+   
+    if(this.emumMap !== undefined) {
+        ber.startSequence(BER.CONTEXT(15)); 
+        StringIntegerCollection.encode(ber, this.enumMap);
+        ber.endSequence();
+    }
+
+    if(this.streamDescriptor !== undefined) {
+        ber.startSequence(BER.CONTEXT(16)); 
+        this.streamDescriptor.encode(ber);
+        ber.endSequence();
+    }
+
+    writeIfDefined(ber, this.schemaIdentifiers, ber.writeString, 17, BER.EMBER_STRING);
+
+    ber.endSequence();
+}
+
+/****************************************************************************
+ * StringIntegerCollection
+ ***************************************************************************/
+
+// This is untested, VPB doesn't seem to use this that I've seen so far
+
+function StringIntegerCollection() {};
+
+StringIntegerCollection.decode = function(ber) {
+    var enumMap = {};
+    ber = ber.getSequence(BER.APPLICATION(8));
+    while(ber.remain > 0) {
+        ber.readSequence(BER.CONTEXT(0));
+        var seq = ber.getSequence(BER.APPLICATION(7));
+        var entryString, entryInteger;
+        while(seq.remain > 0) {
+            var tag = seq.readSequence();
+            if(tag == BER.CONTEXT(0)) {
+                entryString = seq.readString(BER.EMBER_STRING);
+            } else if(tag == BER.CONTEXT(1)) {
+                entryInteger = seq.readInt();
+            } else {
+                throw new errors.UnimplementedEmberTypeError(tag);
+            }
+        }
+
+        enumMap[entryString] = entryInteger;
+    }
+
+    return new Enum(enumMap);
+}
+
+StringIntegerCollection.encode = function(ber, e) {
+    ber.startSequence(BER.APPLICATION(8));
+    ber.startSequence(BER.CONTEXT(0));
+    e.enums.forEach((item) => {
+        ber.startSequence(BER.APPLICATION(7));
+        ber.startSequence(BER.CONTEXT(0));
+        ber.writeString(item.key, BER.EMBER_STRING);
+        ber.endSequence();
+        ber.startSequence(BER.CONTEXT(1));
+        ber.writeInt(item.value);
+        ber.endSequence();
+        ber.endSequence();
+    });
+    ber.endSequence();
+    ber.endSequence();
+}
+
+/****************************************************************************
+ * StreamDescription
+ ***************************************************************************/
+
+var StreamFormat = new Enum({
+    unsignedInt8: 0,
+    unsignedInt16BigEndian: 2,
+    unsignedInt16LittleEndian: 3,
+    unsignedInt32BigEndian: 4,
+    unsignedInt32LittleEndian: 5,
+    unsignedInt64BigEndian: 6,
+    unsignedInt64LittleENdian: 7,
+    signedInt8: 8,
+    signedInt16BigEndian: 10,
+    signedInt16LittleEndian: 11,
+    signedInt32BigEndian: 12,
+    signedInt32LittleEndian: 13,
+    signedInt64BigEndian: 14,
+    signedInt64LittleEndian: 15,
+    ieeeFloat32BigEndian: 20,
+    ieeeFloat32LittleEndian: 21,
+    ieeeFloat64BigEndian: 22,
+    ieeeFloat64LittleEndian: 23
+});
+
+function StreamDescription() {};
+
+StreamDescription.decode = function(ber) {
+    var sd = new StreamDescription();
+    ber = ber.getSequence(BER.APPLICATION(12));
+
+    while(ber.remain > 0) {
+        var tag = ber.readSequence();
+        if(tag == BER.CONTEXT(0)) {
+            sd.format = StreamFormat.get(ber.readInt());
+        } else if(tag == BER.CONTEXT(1)) {
+            sd.offset = ber.readInt();
+        } else {
+            throw new errors.UnimplementedEmberTypeError(tag);
+        }
+    }
+
+    return sd;
+}
+
+StreamDescription.prototype.encode = function(ber) {
+    ber.startSequence(BER.APPLICATION(12));
+
+    writeIfDefinedEnum(ber, this.format, StreamFormat, ber.writeInt, 0);
+    writeIfDefined(ber, this.offset, ber.writeInt, 1);
+
+    ber.endSequence();
 }
 
 

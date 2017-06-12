@@ -92,7 +92,7 @@ S101Client.prototype.sendBERNode = function(node) {
     self.sendBER(writer.buffer);
 
     var reader = new BER.Reader(writer.buffer);
-    console.log(util.inspect(ember.Root.decode(reader), {depth:null}));
+    //console.log(util.inspect(ember.Root.decode(reader), {depth:null}));
 }
 
 module.exports = S101Client;

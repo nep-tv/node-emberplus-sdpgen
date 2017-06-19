@@ -242,7 +242,7 @@ ExtendedWriter.prototype.writeReal = function(value, tag) {
 
 ExtendedWriter.prototype.writeValue = function(value, tag) {
     if(Number.isInteger(value)) {
-        this.writeInteger(value, tag);
+        this.writeInt(value, tag);
     } else if(typeof value == 'boolean') {
         this.writeBoolean(value, tag);
     } else if(typeof value == 'number') {
@@ -251,6 +251,26 @@ ExtendedWriter.prototype.writeValue = function(value, tag) {
         this.writeBuffer(value, tag);
     } else {
         this.writeString(value.toString(), tag);
+    }
+}
+
+ExtendedWriter.prototype.writeIfDefined = function(property, writer, outer, inner) {
+    if(property !== undefined) {
+        this.startSequence(CONTEXT(outer));
+        writer.call(this, property, inner);
+        this.endSequence();
+    }
+}
+
+ExtendedWriter.prototype.writeIfDefinedEnum = function(property, type, writer, outer, inner) {
+    if(property !== undefined) {
+        this.startSequence(BER.CONTEXT(outer));
+        if(property.value !== undefined) {
+            writer.call(this, property.value, inner);
+        } else {
+            writer.call(this, type.get(property), inner);
+        }
+        this.endSequence();
     }
 }
 

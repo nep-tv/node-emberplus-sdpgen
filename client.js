@@ -79,7 +79,7 @@ S101Client.prototype.sendBER = function(data) {
     for(var i=0; i<frames.length; i++) {
         //console.log(frames);
         self.socket.write(frames[i]);
-        winston.debug('sent frame');
+        //winston.info('sent frame', self.codec.validateFrame(frames[i].slice(1, frames[i].length-1)));
         //console.log(frames[i], 
         //    self.codec.validateFrame(frames[i].slice(1, frames[i].length-1)));
     }
@@ -87,11 +87,12 @@ S101Client.prototype.sendBER = function(data) {
 
 S101Client.prototype.sendBERNode = function(node) {
     var self=this;
+    if(node === null) return;
     var writer = new BER.Writer();
     node.encode(writer);
     self.sendBER(writer.buffer);
 
-    var reader = new BER.Reader(writer.buffer);
+    //var reader = new BER.Reader(writer.buffer);
     //console.log(util.inspect(ember.Root.decode(reader), {depth:null}));
 }
 

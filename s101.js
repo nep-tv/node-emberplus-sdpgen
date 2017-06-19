@@ -28,7 +28,7 @@ const FLAG_MULTI_PACKET = 0x00;
 
 const DTD_GLOW = 0x01;
 const DTD_VERSION_MAJOR = 0x02;
-const DTD_VERSION_MINOR = 0x05;
+const DTD_VERSION_MINOR = 0x1F;
 
 const CRC_TABLE = [
     0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x74bf, 
@@ -258,7 +258,7 @@ S101Codec.prototype.keepAliveResponse = function() {
 }
 
 var finalizeBuffer = function(smartbuf) {
-    var crc = (~calculateCRC(smartbuf.toBuffer().slice(1, smartbuf.length))) & 0xFFFF;
+    var crc = (~calculateCRCCE(smartbuf.toBuffer().slice(1, smartbuf.length))) & 0xFFFF;
     var crc_hi = crc >> 8;
     var crc_lo = crc & 0xFF;
 
@@ -284,6 +284,18 @@ var calculateCRC = function(buf) {
     var crc = 0xFFFF;
     for(var i=0; i < buf.length; i++) {
         var b = buf.readUInt8(i);
+        crc = ((crc >> 8) ^ CRC_TABLE[(crc ^ b) & 0xFF]) & 0xFFFF;
+    }
+    return crc;
+}
+
+var calculateCRCCE = function(buf) {
+    var crc = 0xFFFF;
+    for(var i=0; i < buf.length; i++) {
+        var b = buf.readUInt8(i);
+        if(b == S101_CE) {
+            b = S101_XOR ^ buf.readUInt8(++i);
+        }
         crc = ((crc >> 8) ^ CRC_TABLE[(crc ^ b) & 0xFF]) & 0xFFFF;
     }
     return crc;

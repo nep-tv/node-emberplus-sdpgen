@@ -35,3 +35,16 @@ function ASN1Error(message) {
 util.inherits(ASN1Error, Error);
 module.exports.ASN1Error = ASN1Error;
 
+function EmberAccessError(message) {
+    Error.captureStackTrace(this, this.constructor);
+    this.name = this.constructor.name;
+    if(this.message !== undefined) {
+        this.message = message;
+    } else {
+        this.message("Parameter access error");
+    }
+}
+
+util.inherits(EmberAccessError, Error);
+module.exports.EmberAccessError = EmberAccessError;
+

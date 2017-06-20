@@ -187,7 +187,7 @@ S101Codec.prototype.handleEmberFrame = function(frame) {
 S101Codec.prototype.handleEmberPacket = function(packet) {
     var self = this;
 
-    winston.info('ember packet');
+    winston.debug('ember packet');
     //console.log(packet);
     self.emit('emberPacket', packet.toBuffer());
 }

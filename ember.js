@@ -64,6 +64,10 @@ Root.prototype.encode = function(ber) {
     ber.endSequence(); // BER.APPLICATION(0)
 }
 
+Root.prototype.clear = function() {
+    this.elements = undefined;
+}
+
 Root.prototype.getChildren = function() {
     if(this.elements !== undefined) {
         return this.elements;
@@ -94,6 +98,17 @@ TreeNode.prototype.addChild = function(child) {
 TreeNode.prototype.addCallback = function(callback) {
     if(this._callbacks.indexOf(callback) < 0) {
         this._callbacks.push(callback);
+    }
+}
+
+TreeNode.prototype.cancelCallbacks = function() {
+    var self=this;
+    self._directoryCallbacks = [];
+    var children = self.getChildren();
+    if(children !== null) {
+        for(var i=0; i<children.length; i++) {
+            children[i].cancelCallbacks();
+        }
     }
 }
 
@@ -563,8 +578,8 @@ Parameter.prototype.setValue = function(value, callback) {
 
 Parameter.prototype.update = function(other) {
     callbacks = Parameter.super_.prototype.update.apply(this);
-    console.log('update', this.getPath());
-    console.log(callbacks);
+    //console.log('update', this.getPath());
+    //console.log(callbacks);
     if(other.contents !== undefined) {
         //console.log("other: ", other.contents);
         for(var key in other.contents) {

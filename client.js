@@ -43,6 +43,9 @@ util.inherits(S101Client, EventEmitter);
 
 S101Client.prototype.connect = function() {
     var self = this;
+    self.emit('connecting');
+    console.log("socket connecting");
+
     self.socket = net.createConnection(self.port, self.address, () => {
         winston.debug('socket connected');
         self.emit('connected');
@@ -53,8 +56,23 @@ S101Client.prototype.connect = function() {
     });
 
     self.socket.on('close', () => {
+        self.emit('disconnected');
         self.socket = null;
     });
+
+    self.socket.on('error', (e) => {
+        //self.emit('disconnected');
+        //self.socket = null;
+        console.log("Socket error", e);
+    });
+}
+
+S101Client.prototype.disconnect = function() {
+    var self = this;
+    if(self.socket !== null) {
+        self.socket.destroy();
+        self.socket = null;
+    }
 }
 
 S101Client.prototype.sendKeepaliveRequest = function() {

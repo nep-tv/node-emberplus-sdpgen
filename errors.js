@@ -48,3 +48,12 @@ function EmberAccessError(message) {
 util.inherits(EmberAccessError, Error);
 module.exports.EmberAccessError = EmberAccessError;
 
+function EmberTimeoutError(message) {
+    Error.captureStackTrace(this, this.constructor);
+    this.name = this.constructor.name;
+    this.message = message;
+}
+
+util.inherits(EmberTimeoutError, Error);
+module.exports.EmberTimeoutError = EmberTimeoutError;
+

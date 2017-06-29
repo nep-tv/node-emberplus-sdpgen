@@ -1,13 +1,17 @@
 {
-  "name": "emberplusjs",
+  "name": "emberplus",
   "version": "1.0.0",
-  "description": "",
+  "description": "Javascript implementation of the Ember+ automation protocol",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
-  "license": "ISC",
+  "author": "Brian Mayton <bmayton@bdm.cc> (http://bdm.cc)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bmayton/node-emberplus"
+  },    
+  "license": "MIT",
   "dependencies": {
     "asn1": "^0.2.3",
     "bluebird": "^3.5.0",

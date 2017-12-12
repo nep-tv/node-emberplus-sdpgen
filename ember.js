@@ -17,17 +17,33 @@ function Root() {
 util.inherits(Root, TreeNode);
 
 Root.decode = function(ber) {
-    var r = new Root();
-    ber.readSequence(BER.APPLICATION(0));
-    var tag = ber.readSequence();
+    let r = new Root();
+    let tag = undefined;
+    let tmp, len;
+    //console.log(ber);
+    try {
+        ber.readSequence(BER.APPLICATION(0));
+        tag = ber.readSequence();
+    }
+    catch (e) {
+        return;
+    }
+
 
     if(tag == BER.APPLICATION(11)) {
         r.elements = [];
-        var seq = ber.getSequence(BER.CONTEXT(0));
-        while(seq.remain > 0) {
-            r.addElement(RootElement.decode(seq));
+        while(ber.remain > 0) {
+            try {
+                var seq = ber.getSequence(BER.CONTEXT(0));
+
+                while (seq.remain > 0) {
+                    r.addElement(RootElement.decode(seq));
+                }
+            }
+            catch(e) {
+                return r;
+            }
         }
-        
     } else {
         // StreamCollection BER.APPLICATION(6)
         // InvocationResult BER.APPLICATION(23)
@@ -157,6 +173,48 @@ TreeNode.prototype.getChildren = function() {
     return null;
 }
 
+
+_getElementByPath = function(children, pathArray, path) {
+    if ((children === null)||(children === undefined)||(pathArray.length < 1))  {
+        return null;
+    }
+    var currPath = pathArray.join(".");
+    var number = pathArray[pathArray.length - 1];
+    //console.log(`looking for path ${currPath} or number ${number}`);
+
+    for (var i = 0; i < children.length; i++) {
+        //console.log("looking at child", JSON.stringify(children[i]));
+
+        if ((children[i].path === currPath)||
+            (children[i].number === number)){
+            if (path.length === 0) {
+                return children[i];
+            }
+            pathArray.push(path.splice(0,1));
+            return _getElementByPath(children[i].getChildren(), pathArray, path);
+        }
+    }
+
+    return null;
+}
+
+TreeNode.prototype.getElementByPath = function(path) {
+    var children = this.getChildren();
+    if ((children === null)||(children === undefined))  {
+        return null;
+    }
+    path = path.split(".");
+
+    if (path.length > 2) {
+        pathArray = path.splice(0,2);
+    }
+    else {
+        pathArray = path;
+        path = [];
+    }
+    return _getElementByPath(children, pathArray, path);
+}
+
 TreeNode.prototype.getElementByNumber = function(index) {
     var children = this.getChildren();
     if(children === null) return null;
@@ -196,7 +254,7 @@ TreeNode.prototype.update = function(other) {
     while(self._directoryCallbacks.length > 0) {
         (function(cb) {
             callbacks.push(() => {
-                console.log(this.constructor.name, "dir cb", self.getPath());
+                //console.log(this.constructor.name, "dir cb", self.getPath());
                 cb(null, self)
             });
         })(self._directoryCallbacks.shift());
@@ -206,7 +264,7 @@ TreeNode.prototype.update = function(other) {
     for(var i=0; i<self._callbacks.length; i++) {
         (function(cb) {
             callbacks.push(() => {
-                console.log(self.constructor.name, "cb", self.getPath());
+                //console.log(self.constructor.name, "cb", self.getPath());
                 cb(self)
             });
         })(self._callbacks[i]);
@@ -234,7 +292,7 @@ TreeNode.prototype.getNodeByPath = function(client, path, callback) {
             }
             child = node.getElement(path[0]);
             if(child === null) {
-                console.log("inv:", path[0], self);
+                //console.log("inv:", path[0], self);
                 callback('invalid path');
                 return;
             } else {
@@ -248,6 +306,9 @@ TreeNode.prototype.getNodeByPath = function(client, path, callback) {
 }
 
 TreeNode.prototype.getPath = function() {
+    if (this.path !== undefined) {
+        return this.path;
+    }
     if(this._parent === null) {
         if(this.number === undefined) {
             return "";
@@ -292,6 +353,10 @@ Element.decode = function(ber) {
     } else if(tag == BER.APPLICATION(2)) {
         // Command
         return Command.decode(ber);
+    } else if(tag == BER.APPLICATION(9)) {
+        return QualifiedParameter.decode(ber);
+    } else if(tag == BER.APPLICATION(10)) {
+        return QualifiedNode.decode(ber); 
     } else if(tag == BER.APPLICATION(13)) {
         // Matrix
         throw new errors.UnimplementedEmberTypeError(tag);
@@ -311,6 +376,99 @@ Element.decode = function(ber) {
  ***************************************************************************/
 
 
+
+/****************************************************************************
+ * QualifiedNode
+ ***************************************************************************/
+
+function QualifiedNode(path) {
+    QualifiedNode.super_.call(this);
+    if (path != undefined) {
+        this.path = path;
+    }
+}
+
+util.inherits(QualifiedNode, TreeNode);
+
+
+QualifiedNode.decode = function(ber) {
+    var qn = new QualifiedNode();
+    ber = ber.getSequence(BER.APPLICATION(10));
+    while(ber.remain > 0) {
+        var tag = ber.readSequence();
+        if(tag == BER.CONTEXT(0)) {
+            qn.path = ber.readOID(13); // 13 => relative OID 
+        }
+        else if(tag == BER.CONTEXT(1)) {
+            qn.contents = NodeContents.decode(ber);
+        } else if(tag == BER.CONTEXT(2)) {
+            qn.children = [];
+            var seq = ber.getSequence(BER.APPLICATION(4));
+            while(seq.remain > 0) {
+                seq.readSequence(BER.CONTEXT(0));
+                qn.addChild(Element.decode(seq));
+            }
+        } else {
+            throw new errors.UnimplementedEmberTypeError(tag);
+        }
+    }
+    return qn;
+}
+
+QualifiedNode.prototype.update = function(other) {
+    callbacks = QualifiedNode.super_.prototype.update.apply(this);
+    if ((other !== undefined) && (other.contents !== undefined)) {
+        this.contents = other.contents;
+    }
+    return callbacks;
+}
+
+QualifiedNode.prototype.getDirectory = function(callback) {
+    if (this.path === undefined) {
+        throw new Error("Invalid path");
+    }
+    //console.log("Generating getDirectory command for node", this);
+    var r = new Root();
+    var qn = new QualifiedNode();
+    qn.path = this.path;
+    r.addElement(qn);
+    qn.addChild(new Command(32));
+    if(callback !== undefined) {
+        this._directoryCallbacks.push((error, node) => { callback(error, node) });
+    }
+    return r;
+}
+
+
+QualifiedNode.prototype.encode = function(ber) {
+    ber.startSequence(BER.APPLICATION(10));
+
+    ber.startSequence(BER.CONTEXT(0));
+    ber.writeOID(this.path, 13);
+    ber.endSequence(); // BER.CONTEXT(0)
+
+    if(this.contents !== undefined) {
+        ber.startSequence(BER.CONTEXT(1));
+        this.contents.encode(ber);
+        ber.endSequence(); // BER.CONTEXT(1)
+    }
+
+    if(this.children !== undefined) {
+        ber.startSequence(BER.CONTEXT(2));
+        ber.startSequence(BER.APPLICATION(4));
+        for(var i=0; i<this.children.length; i++) {
+            ber.startSequence(BER.CONTEXT(0));
+            this.children[i].encode(ber);
+            ber.endSequence();
+        }
+        ber.endSequence();
+        ber.endSequence();
+    }
+
+    ber.endSequence(); // BER.APPLICATION(3)
+}
+
+module.exports.QualifiedNode = QualifiedNode;
 
 /****************************************************************************
  * Node
@@ -502,6 +660,115 @@ Command.prototype.encode = function(ber) {
 
 module.exports.Command = Command;
 
+
+/****************************************************************************
+ * QualifiedParameter
+ ***************************************************************************/
+
+function QualifiedParameter(number) {
+    QualifiedParameter.super_.call(this);
+    if(number !== undefined)
+        this.number = number;
+}
+
+util.inherits(QualifiedParameter, TreeNode);
+module.exports.QualifiedParameter = QualifiedParameter;
+
+QualifiedParameter.decode = function(ber) {
+    //console.log("Decoding QualifiedParameter");
+    var qp = new QualifiedParameter();
+    ber = ber.getSequence(BER.APPLICATION(9));
+    while(ber.remain > 0) {
+        var tag = ber.readSequence();
+        if(tag == BER.CONTEXT(0)) {
+            qp.path = ber.readOID(13); // 13 => relative OID
+            //console.log("Decoded path",qp.path);
+        }
+        else if(tag == BER.CONTEXT(1)) {
+            //console.log("Decoding content");
+            qp.contents = ParameterContents.decode(ber);
+            //console.log("Decoded content",qp.contents);
+        } else if(tag == BER.CONTEXT(2)) {
+            qp.children = [];
+            //console.log("Decoding children");
+            var seq = ber.getSequence(BER.APPLICATION(4));
+            while(seq.remain > 0) {
+                seq.readSequence(BER.CONTEXT(0));
+                qp.addChild(Element.decode(seq));
+            }
+        } else {
+            return qp;
+            //throw new errors.UnimplementedEmberTypeError(tag);
+        }
+    }
+    return qp;
+}
+
+QualifiedParameter.prototype.encode = function(ber) {
+    ber.startSequence(BER.APPLICATION(9));
+
+    ber.startSequence(BER.CONTEXT(0));
+    ber.writeOID(this.path, 13);
+    ber.endSequence(); // BER.CONTEXT(0)
+
+    if(this.contents !== undefined) {
+        ber.startSequence(BER.CONTEXT(1));
+        this.contents.encode(ber);
+        ber.endSequence(); // BER.CONTEXT(1)
+    }
+
+    if(this.children !== undefined) {
+        ber.startSequence(BER.CONTEXT(2));
+        ber.startSequence(BER.APPLICATION(4));
+        for(var i=0; i<this.children.length; i++) {
+            ber.startSequence(BER.CONTEXT(0));
+            this.children[i].encode(ber);
+            ber.endSequence();
+        }
+        ber.endSequence();
+        ber.endSequence();
+    }
+
+    ber.endSequence(); // BER.APPLICATION(3)
+}
+
+QualifiedParameter.prototype.update = function(other) {
+    callbacks = QualifiedParameter.super_.prototype.update.apply(this);
+    if(other.contents !== undefined) {
+        this.contents = other.contents;
+    }
+    return callbacks;
+}
+
+QualifiedParameter.prototype.getDirectory = function(callback) {
+    if (this.path === undefined) {
+        throw new Error("Invalid path");
+    }
+    let r = new Root();
+    let qp = new QualifiedParameter();
+    qp.path = this.path;
+    r.addElement(qp);
+    qp.addChild(new Command(32));
+    if(callback !== undefined) {
+        this._directoryCallbacks.push((error, node) => { callback(error, node) });
+    }
+    return r;
+}
+
+QualifiedParameter.prototype.setValue = function(value, callback) {
+    if(callback !== undefined) {
+        this._directoryCallbacks.push(callback);
+    }
+
+    let r = new Root();
+    let qp = new QualifiedParameter();
+    r.addElement(qp);
+    qp.path = this.path;
+    qp.contents = new ParameterContents(value);
+    //console.log(JSON.stringify(r));
+    return r;
+}
+
 /****************************************************************************
  * Parameter
  ***************************************************************************/
@@ -662,11 +929,14 @@ ParameterContents.decode = function(ber) {
             pc.streamDescriptor = StreamDescription.decode(ber);
         } else if(tag == BER.CONTEXT(17)) {
             pc.schemaIdentifiers = ber.readString(BER.EMBER_STRING);
-        } else {
+        } else if (tag == null) {
+            break;
+        }
+        else {
             throw new errors.UnimplementedEmberTypeError(tag);
         }
     }
-
+    //console.log("decoded content", pc);
     return pc;
 }
 

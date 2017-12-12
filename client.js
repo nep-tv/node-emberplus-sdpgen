@@ -32,7 +32,9 @@ function S101Client(address, port) {
         var ber = new BER.Reader(packet);
         try {
             var root = ember.Root.decode(ber);
-            self.emit('emberTree', root);
+            if (root !== undefined) {
+                self.emit('emberTree', root);
+            }
         } catch(e) {
             console.log(e);
         }
@@ -44,7 +46,7 @@ util.inherits(S101Client, EventEmitter);
 S101Client.prototype.connect = function() {
     var self = this;
     self.emit('connecting');
-    console.log("socket connecting");
+    //console.log("socket connecting");
 
     self.socket = net.createConnection(self.port, self.address, () => {
         winston.debug('socket connected');
@@ -63,7 +65,7 @@ S101Client.prototype.connect = function() {
     self.socket.on('error', (e) => {
         //self.emit('disconnected');
         //self.socket = null;
-        console.log("Socket error", e);
+        //console.log("Socket error", e);
     });
 }
 
@@ -109,10 +111,9 @@ S101Client.prototype.sendBERNode = function(node) {
     var writer = new BER.Writer();
     node.encode(writer);
     self.sendBER(writer.buffer);
-
-    //var reader = new BER.Reader(writer.buffer);
-    //console.log(util.inspect(ember.Root.decode(reader), {depth:null}));
 }
+
+
 
 module.exports = S101Client;
 

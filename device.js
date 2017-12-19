@@ -24,10 +24,11 @@ function DeviceTree(host, port) {
     });
 
     self.client.on('connected', () => {
-        self.root.clear();
-        self.client.sendBERNode(self.root.getDirectory((node) => {
-            self.emit('ready');
-        }));
+        // self.root.clear();
+        // self.client.sendBERNode(self.root.getDirectory((node) => {
+        //     self.emit('ready');
+        // }));
+        self.emit('connected');
     });
 
     self.client.on('disconnected', () => {
@@ -51,9 +52,14 @@ function DeviceTree(host, port) {
 
 util.inherits(DeviceTree, EventEmitter);
 
+
 DecodeBuffer = function(packet) {
      var ber = new BER.Reader(packet);
      return ember.Root.decode(ber);
+}
+
+DeviceTree.prototype.connect = function() {
+    this.client.connect();
 }
 
 DeviceTree.prototype.expand = function(node)
@@ -78,6 +84,10 @@ DeviceTree.prototype.expand = function(node)
 
 DeviceTree.prototype.getDirectory = function(qnode) {
     var self = this;
+    if (qnode === undefined) {
+        self.root.clear();
+        qnode = self.root;
+    }
     return new Promise((resolve, reject) => {
         self.addRequest((error) => {
             if (error) {

@@ -1048,7 +1048,7 @@ function QualifiedMatrix(path) {
 util.inherits(QualifiedMatrix, TreeNode);
 
 
-QualifiedNoQualifiedMatrixde.decode = function(ber) {
+QualifiedMatrix.decode = function(ber) {
     var qm = new QualifiedMatrix();
     ber = ber.getSequence(BER.APPLICATION(17));
     while(ber.remain > 0) {

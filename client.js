@@ -14,42 +14,48 @@ function S101Client(address, port) {
     self.address = address;
     self.port = port;
     self.socket = null;
-
+    self.keepaliveInterval = 10;
     self.codec = new S101Codec();
-    self.connect();
+    self.status = "disconnected";
 
-    setInterval(() => {
-        self.sendKeepaliveRequest();
-    }, 10000);
-
-    self.codec.on('keepaliveReq', () => {
-        self.sendKeepaliveResponse();
-    });
-
-    self.codec.on('emberPacket', (packet) => {
-        self.emit('emberPacket', packet);
-
-        var ber = new BER.Reader(packet);
-        try {
-            var root = ember.Root.decode(ber);
-            if (root !== undefined) {
-                self.emit('emberTree', root);
-            }
-        } catch(e) {
-            console.log(e);
-        }
-    });
 }
 
 util.inherits(S101Client, EventEmitter);
 
 S101Client.prototype.connect = function() {
     var self = this;
+    if (self.status !== "disconnected") {
+        return;
+    }
+
     self.emit('connecting');
     //console.log("socket connecting");
 
     self.socket = net.createConnection(self.port, self.address, () => {
         winston.debug('socket connected');
+
+        setInterval(() => {
+            self.sendKeepaliveRequest();
+        }, 1000 * self.keepaliveInterval );
+
+        self.codec.on('keepaliveReq', () => {
+            self.sendKeepaliveResponse();
+        });
+
+        self.codec.on('emberPacket', (packet) => {
+            self.emit('emberPacket', packet);
+
+            var ber = new BER.Reader(packet);
+            try {
+                var root = ember.Root.decode(ber);
+                if (root !== undefined) {
+                    self.emit('emberTree', root);
+                }
+            } catch(e) {
+                self.emit("error", e);
+            }
+        });
+
         self.emit('connected');
     });
 

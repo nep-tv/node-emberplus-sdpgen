@@ -100,7 +100,8 @@ ExtendedReader.prototype.readValue = function() {
         return this.readString(UNIVERSAL(4), true);
     } else if (tag === EMBER_RELATIVE_OID) {
         return this.readOID(EMBER_RELATIVE_OID);
-    } else {
+    } 
+    else {
         throw new errors.UnimplementedEmberTypeError(tag);
     }
 }

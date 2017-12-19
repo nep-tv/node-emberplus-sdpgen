@@ -3,7 +3,6 @@ const errors = require('./errors.js');
 const util = require('util');
 const Enum = require('enum');
 
-
 const COMMAND_SUBSCRIBE     = 30;
 const COMMAND_UNSUBSCRIBE   = 31;
 const COMMAND_GETDIRECTORY  = 32;
@@ -25,7 +24,6 @@ function Root() {
 util.inherits(Root, TreeNode);
 
 
-
 Root.decode = function(ber) {
     let r = new Root();
     let tag = undefined;
@@ -36,7 +34,6 @@ Root.decode = function(ber) {
             tag = ber.peek();
         }
         catch (e) {
-            console.log(e.stack);
             break;
         }
 
@@ -375,7 +372,10 @@ Element.decode = function(ber) {
     else if(tag == BER.APPLICATION(19)) {
         // Function
         throw new errors.UnimplementedEmberTypeError(tag);
-    } else if(tag == BER.APPLICATION(24)) {
+    } else if (tag == BER.APPLICATION(20)) {
+        return QualifiedFunction.decode(ber);
+    }
+    else if(tag == BER.APPLICATION(24)) {
         // Template
         throw new errors.UnimplementedEmberTypeError(tag);
     } else {
@@ -1193,6 +1193,225 @@ QualifiedMatrix.prototype.encode = function(ber) {
 }
 
 module.exports.QualifiedMatrix = QualifiedMatrix;
+
+/****************************************************************************
+ * FunctionContent
+ ***************************************************************************/
+
+function FunctionContent() {
+}
+
+decodeTupleDescription = function(ber) {
+    var tuple = {};
+    ber = ber.getSequence(BER.APPLICATION(21));
+    while(ber.remain > 0) {
+        tag = ber.peek();
+        var seq = ber.getSequence(tag);
+        if (tag === BER.CONTEXT(0)) {
+            tuple.type = seq.readInt();
+        }
+        else if (tag === BER.CONTEXT(1)) {
+            tuple.name = seq.readString(BER.EMBER_STRING);
+        }
+    }
+    return tuple;
+};
+
+encodeTupleDescription = function(tuple, ber) {
+    ber.startSequence(BER.APPLICATION(21));
+    if (tuple.type !== undefined) {
+        ber.startSequence(BER.CONTEXT(0));
+        ber.writeInt(tuple.type);
+        ber.endSequence();
+    }
+    if (tuple.name !== undefined) {
+        ber.startSequence(BER.CONTEXT(1));
+        ber.writeString(tuple.name);
+        ber.endSequence();
+    }
+    ber.endSequence();
+}
+
+FunctionContent.decode = function(ber) {
+    var fc = new FunctionContent();
+    ber = ber.getSequence(BER.EMBER_SET);
+    while(ber.remain > 0) {
+        var tag = ber.peek();
+        var seq = ber.getSequence(tag);
+        if(tag == BER.CONTEXT(0)) {
+            fc.identifier = seq.readString(BER.EMBER_STRING);
+        } else if(tag == BER.CONTEXT(1)) {
+            fc.description = seq.readString(BER.EMBER_STRING);
+        } else if(tag == BER.CONTEXT(2)) {
+            fc.arguments = [];
+            seq = seq.getSequence(BER.EMBER_SEQUENCE);
+            while(seq.remain > 0) {
+                tag = seq.peek();
+                var dataSeq = seq.getSequence(BER.CONTEXT(0));
+                if (tag === BER.CONTEXT(0)) {
+                    fc.arguments.push(decodeTupleDescription(dataSeq));
+                }
+            }
+        } else if(tag == BER.CONTEXT(3)) {
+            fc.result = [];
+            while(seq.remain > 0) {
+                tag = seq.peek();
+                var dataSeq = seq.getSequence(tag);
+                if (tag === BER.CONTEXT(0)) {
+                    fc.result.push(decodeTupleDescription(dataSeq));
+                }
+            }
+        } else if(tag == BER.CONTEXT(4)) {
+            fc.templateReference = seq.readOID(BER.EMBER_RELATIVE_OID);
+        } else {
+            throw new errors.UnimplementedEmberTypeError(tag);
+        }
+    }
+
+    return fc;
+}
+
+FunctionContent.prototype.encode = function(ber) {
+    ber.startSequence(BER.EMBER_SET);
+
+    if(this.identifier !== undefined) {
+        ber.startSequence(BER.CONTEXT(0));
+        ber.writeString(this.identifier, BER.EMBER_STRING);
+        ber.endSequence(); // BER.CONTEXT(0)
+    }
+
+    if(this.description !== undefined) {
+        ber.startSequence(BER.CONTEXT(1));
+        ber.writeString(this.description, BER.EMBER_STRING);
+        ber.endSequence(); // BER.CONTEXT(1)
+    }
+
+    if(this.arguments !== undefined) {
+        ber.startSequence(BER.CONTEXT(2));
+        ber.startSequence(BER.EMBER_SEQUENCE);
+        for(var i =0; i < this.arguments; i++) {
+            ber.startSequence(BER.CONTEXT(0));
+            encodeTupleDescription(this.arguments[i], ber);
+            ber.endSequence();
+        }
+        ber.endSequence();
+        ber.endSequence(); // BER.CONTEXT(2)
+    }
+
+    if(this.result !== undefined) {
+        ber.startSequence(BER.CONTEXT(3));
+        ber.startSequence(BER.EMBER_SEQUENCE);
+        for(var i =0; i < this.result; i++) {
+            ber.startSequence(BER.CONTEXT(0));
+            encodeTupleDescription(this.result[i], ber);
+            ber.endSequence();
+        }
+        ber.endSequence();
+        ber.endSequence(); // BER.CONTEXT(3)
+    }
+
+    ber.endSequence(); // BER.EMBER_SET
+}
+
+module.exports.FunctionContent = FunctionContent;
+
+/****************************************************************************
+ * QualifiedFunction
+ ***************************************************************************/
+
+function QualifiedFunction(path) {
+    QualifiedFunction.super_.call(this);
+    if (path != undefined) {
+        this.path = path;
+    }
+}
+
+util.inherits(QualifiedFunction, TreeNode);
+
+
+QualifiedFunction.decode = function(ber) {
+    var qf = new QualifiedFunction();
+    ber = ber.getSequence(BER.APPLICATION(20));
+    while(ber.remain > 0) {
+        var tag = ber.peek();
+        var seq = ber.getSequence(tag);
+        if(tag == BER.CONTEXT(0)) {
+            qf.path = seq.readOID(BER.EMBER_RELATIVE_OID); // 13 => relative OID
+        }
+        else if(tag == BER.CONTEXT(1)) {
+            qf.contents = FunctionContent.decode(seq);
+        } else if(tag == BER.CONTEXT(2)) {
+            qf.children = [];
+            seq = seq.getSequence(BER.APPLICATION(4));
+            while(seq.remain > 0) {
+                var nodeSeq = seq.getSequence(BER.CONTEXT(0));
+                qf.addChild(Element.decode(nodeSeq));
+            }
+        }
+        else {
+            throw new errors.UnimplementedEmberTypeError(tag);
+        }
+    }
+    return qf;
+}
+
+QualifiedFunction.prototype.update = function(other) {
+    callbacks = QualifiedFunction.super_.prototype.update.apply(this);
+    if (other !== undefined) {
+        if (other.contents !== undefined) {
+            this.contents = other.contents;
+        }
+    }
+
+    return callbacks;
+}
+
+QualifiedFunction.prototype.getDirectory = function(callback) {
+    if (this.path === undefined) {
+        throw new Error("Invalid path");
+    }
+    //console.log("Generating getDirectory command for node", this);
+    var r = new Root();
+    var qf = new QualifiedFunction();
+    qf.path = this.path;
+    r.addElement(qf);
+    qf.addChild(new Command(COMMAND_GETDIRECTORY));
+    if(callback !== undefined) {
+        this._directoryCallbacks.push((error, node) => { callback(error, node) });
+    }
+    return r;
+}
+
+
+QualifiedFunction.prototype.encode = function(ber) {
+    ber.startSequence(BER.APPLICATION(20));
+
+    ber.startSequence(BER.CONTEXT(0));
+    ber.writeOID(this.path, BER.EMBER_RELATIVE_OID);
+    ber.endSequence(); // BER.CONTEXT(0)
+
+    if(this.contents !== undefined) {
+        ber.startSequence(BER.CONTEXT(1));
+        this.contents.encode(ber);
+        ber.endSequence(); // BER.CONTEXT(1)
+    }
+
+    if(this.children !== undefined) {
+        ber.startSequence(BER.CONTEXT(2));
+        ber.startSequence(BER.APPLICATION(4));
+        for(var i=0; i<this.children.length; i++) {
+            ber.startSequence(BER.CONTEXT(0));
+            this.children[i].encode(ber);
+            ber.endSequence();
+        }
+        ber.endSequence();
+        ber.endSequence();
+    }
+
+    ber.endSequence(); // BER.APPLICATION(3)
+}
+
+module.exports.QualifiedFunction = QualifiedFunction;
 
 /****************************************************************************
  * NodeContents

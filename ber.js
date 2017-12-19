@@ -43,6 +43,7 @@ const EMBER_REAL                = 9;
 const EMBER_ENUMERATED          = 10;
 const EMBER_EMBEDDED            = 11;
 const EMBER_STRING              = 12;
+const EMBER_RELATIVE_OID        = 13;
 
 const EMBER_SEQUENCE            = 0x20 | 16;
 const EMBER_SET                 = 0x20 | 17;
@@ -51,6 +52,7 @@ module.exports.APPLICATION = APPLICATION;
 module.exports.CONTEXT = CONTEXT;
 module.exports.UNIVERSAL = UNIVERSAL;
 module.exports.EMBER_SET = EMBER_SET;
+module.exports.EMBER_SEQUENCE = EMBER_SEQUENCE;
 module.exports.EMBER_BOOLEAN = EMBER_BOOLEAN;
 module.exports.EMBER_INTEGER = EMBER_INTEGER;
 module.exports.EMBER_BITSTRING = EMBER_BITSTRING;
@@ -62,8 +64,8 @@ module.exports.EMBER_EXTERNAL = EMBER_EXTERNAL;
 module.exports.EMBER_REAL = EMBER_REAL;
 module.exports.EMBER_ENUMERATED = EMBER_ENUMERATED;
 module.exports.EMBER_EMBEDDED = EMBER_EMBEDDED;
-
 module.exports.EMBER_STRING = EMBER_STRING;
+module.exports.EMBER_RELATIVE_OID = EMBER_RELATIVE_OID;
 
 function ExtendedReader(data) {
     ExtendedReader.super_.call(this, data);
@@ -72,23 +74,32 @@ function ExtendedReader(data) {
 util.inherits(ExtendedReader, BER.Reader);
 module.exports.Reader = ExtendedReader;
 
+
+readBlock = function(ber) {
+
+}
+
+
 ExtendedReader.prototype.getSequence = function(tag) {
     var buf = this.readString(tag, true);
     return new ExtendedReader(buf);
 }
 
 ExtendedReader.prototype.readValue = function() {
-    var tag = this.peek(tag);
+    var tag = this.peek();
+
     if(tag == EMBER_STRING) {
         return this.readString(EMBER_STRING);
-    } else if(tag == UNIVERSAL(2)) {
+    } else if(tag == EMBER_INTEGER) {
         return this.readInt();
-    } else if(tag == UNIVERSAL(9)) {
+    } else if(tag == EMBER_REAL) {
         return this.readReal();
-    } else if(tag == UNIVERSAL(1)) {
+    } else if(tag == EMBER_BOOLEAN) {
         return this.readBoolean();
-    } else if(tag == UNIVERSAL(4)) {
+    } else if(tag == EMBER_OCTETSTRING) {
         return this.readString(UNIVERSAL(4), true);
+    } else if (tag === EMBER_RELATIVE_OID) {
+        return this.readOID(EMBER_RELATIVE_OID);
     } else {
         throw new errors.UnimplementedEmberTypeError(tag);
     }

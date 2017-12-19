@@ -3,7 +3,15 @@ const errors = require('./errors.js');
 const util = require('util');
 const Enum = require('enum');
 
-module.exports.GetDirectory = 32;
+
+const COMMAND_SUBSCRIBE     = 30;
+const COMMAND_UNSUBSCRIBE   = 31;
+const COMMAND_GETDIRECTORY  = 32;
+module.exports.Subscribe    = COMMAND_SUBSCRIBE;
+module.exports.Unsubscribe  = COMMAND_UNSUBSCRIBE;
+module.exports.GetDirectory = COMMAND_GETDIRECTORY;
+
+
 
 /****************************************************************************
  * Root
@@ -16,38 +24,43 @@ function Root() {
 
 util.inherits(Root, TreeNode);
 
+
+
 Root.decode = function(ber) {
     let r = new Root();
     let tag = undefined;
-    let tmp, len;
-    //console.log(ber);
-    try {
-        ber.readSequence(BER.APPLICATION(0));
-        tag = ber.readSequence();
-    }
-    catch (e) {
-        return;
-    }
+
+    while(ber.remain > 0) {
+        try {
+            ber = ber.getSequence(BER.APPLICATION(0));
+            tag = ber.peek();
+        }
+        catch (e) {
+            console.log(e.stack);
+            break;
+        }
 
 
-    if(tag == BER.APPLICATION(11)) {
-        r.elements = [];
-        while(ber.remain > 0) {
-            try {
-                var seq = ber.getSequence(BER.CONTEXT(0));
-
-                while (seq.remain > 0) {
-                    r.addElement(RootElement.decode(seq));
+        if (tag == BER.APPLICATION(11)) {
+            var seq = ber.getSequence(BER.APPLICATION(11));
+            r.elements = [];
+            while (seq.remain > 0) {
+                try {
+                    var rootReader = seq.getSequence(BER.CONTEXT(0));
+                    while (rootReader.remain > 0) {
+                        r.addElement(RootElement.decode(rootReader));
+                    }
+                }
+                catch (e) {
+                    console.log(e.stack);
+                    return r;
                 }
             }
-            catch(e) {
-                return r;
-            }
+        } else {
+            // StreamCollection BER.APPLICATION(6)
+            // InvocationResult BER.APPLICATION(23)
+            throw new errors.UnimplementedEmberTypeError(tag);
         }
-    } else {
-        // StreamCollection BER.APPLICATION(6)
-        // InvocationResult BER.APPLICATION(23)
-        throw new errors.UnimplementedEmberTypeError(tag);
     }
     return r;
 }
@@ -135,7 +148,6 @@ TreeNode.prototype.getMinimal = function() {
 TreeNode.prototype.getTreeBranch = function(child, modifier) {
     var m = this.getMinimal();
     if(child !== undefined) {
-        //console.log('addChild', child);
         m.addChild(child);
     }
 
@@ -163,7 +175,7 @@ TreeNode.prototype.getDirectory = function(callback) {
     if(callback !== undefined) {
         this._directoryCallbacks.push((error, node) => { callback(error, node) });
     }
-    return this.getTreeBranch(new Command(32));
+    return this.getTreeBranch(new Command(COMMAND_GETDIRECTORY));
 }
 
 TreeNode.prototype.getChildren = function() {
@@ -345,22 +357,22 @@ function Element() {};
 Element.decode = function(ber) {
     var tag = ber.peek();
     if(tag == BER.APPLICATION(1)) {
-        // Parameter
         return Parameter.decode(ber);
     } else if(tag == BER.APPLICATION(3)) {
-        // Node
         return Node.decode(ber);
     } else if(tag == BER.APPLICATION(2)) {
-        // Command
         return Command.decode(ber);
     } else if(tag == BER.APPLICATION(9)) {
         return QualifiedParameter.decode(ber);
     } else if(tag == BER.APPLICATION(10)) {
-        return QualifiedNode.decode(ber); 
+        return QualifiedNode.decode(ber);
     } else if(tag == BER.APPLICATION(13)) {
-        // Matrix
-        throw new errors.UnimplementedEmberTypeError(tag);
-    } else if(tag == BER.APPLICATION(19)) {
+        return MatrixNode.decode(ber);
+    }
+    else if(tag == BER.APPLICATION(17)) {
+        return QualifiedMatrix.decode(ber);
+    }
+    else if(tag == BER.APPLICATION(19)) {
         // Function
         throw new errors.UnimplementedEmberTypeError(tag);
     } else if(tag == BER.APPLICATION(24)) {
@@ -395,18 +407,19 @@ QualifiedNode.decode = function(ber) {
     var qn = new QualifiedNode();
     ber = ber.getSequence(BER.APPLICATION(10));
     while(ber.remain > 0) {
-        var tag = ber.readSequence();
+        var tag = ber.peek();
+        var seq = ber.getSequence(tag);
         if(tag == BER.CONTEXT(0)) {
-            qn.path = ber.readOID(13); // 13 => relative OID 
+            qn.path = seq.readOID(BER.EMBER_RELATIVE_OID); // 13 => relative OID
         }
         else if(tag == BER.CONTEXT(1)) {
-            qn.contents = NodeContents.decode(ber);
+            qn.contents = NodeContents.decode(seq);
         } else if(tag == BER.CONTEXT(2)) {
             qn.children = [];
-            var seq = ber.getSequence(BER.APPLICATION(4));
+            seq = seq.getSequence(BER.APPLICATION(4));
             while(seq.remain > 0) {
-                seq.readSequence(BER.CONTEXT(0));
-                qn.addChild(Element.decode(seq));
+                var nodeSeq = seq.getSequence(BER.CONTEXT(0));
+                qn.addChild(Element.decode(nodeSeq));
             }
         } else {
             throw new errors.UnimplementedEmberTypeError(tag);
@@ -432,7 +445,7 @@ QualifiedNode.prototype.getDirectory = function(callback) {
     var qn = new QualifiedNode();
     qn.path = this.path;
     r.addElement(qn);
-    qn.addChild(new Command(32));
+    qn.addChild(new Command(COMMAND_GETDIRECTORY));
     if(callback !== undefined) {
         this._directoryCallbacks.push((error, node) => { callback(error, node) });
     }
@@ -444,7 +457,7 @@ QualifiedNode.prototype.encode = function(ber) {
     ber.startSequence(BER.APPLICATION(10));
 
     ber.startSequence(BER.CONTEXT(0));
-    ber.writeOID(this.path, 13);
+    ber.writeOID(this.path, BER.EMBER_RELATIVE_OID);
     ber.endSequence(); // BER.CONTEXT(0)
 
     if(this.contents !== undefined) {
@@ -487,17 +500,18 @@ Node.decode = function(ber) {
     ber = ber.getSequence(BER.APPLICATION(3));
 
     while(ber.remain > 0) {
-        var tag = ber.readSequence();
+        var tag = ber.peek();
+        var seq = ber.getSequence(tag);
         if(tag == BER.CONTEXT(0)) {
-            n.number = ber.readInt();
+            n.number = seq.readInt();
         } else if(tag == BER.CONTEXT(1)) {
-            n.contents = NodeContents.decode(ber);
+            n.contents = NodeContents.decode(seq);
         } else if(tag == BER.CONTEXT(2)) {
+            seq = seq.getSequence(BER.APPLICATION(4));
             n.children = [];
-            var seq = ber.getSequence(BER.APPLICATION(4));
             while(seq.remain > 0) {
-                seq.readSequence(BER.CONTEXT(0));
-                n.addChild(Element.decode(seq));
+                var nodeSeq = seq.getSequence(BER.CONTEXT(0));
+                n.addChild(Element.decode(nodeSeq));
             }
         } else {
             throw new errors.UnimplementedEmberTypeError(tag);
@@ -550,6 +564,636 @@ Node.prototype.subscribe = function(callback) {
 
 module.exports.Node = Node;
 
+/******************************
+ * MATRIX
+ ******************************/
+
+function MatrixNode(number) {
+    MatrixNode.super_.call(this);
+    if(number !== undefined)
+        this.number = number;
+}
+
+
+MatrixNode.decode = function(ber) {
+    var m = new MatrixNode();
+    ber = ber.getSequence(BER.APPLICATION(13));
+    while (ber.remain > 0) {
+        var tag = ber.peek();
+        var seq = ber.getSequence(tag);
+        if (tag == BER.CONTEXT(0)) {
+            m.number = seq.readInt();
+        }
+        else if (tag == BER.CONTEXT(1)) {
+            m.contents = MatrixContents.decode(seq);
+
+        } else if (tag == BER.CONTEXT(2)) {
+            m.children = [];
+            seq = seq.getSequence(BER.APPLICATION(4));
+            while (seq.remain > 0) {
+                var childSeq = seq.getSequence(BER.CONTEXT(0));
+                m.addChild(Element.decode(childSeq));
+            }
+        } else if (tag == BER.CONTEXT(3)) {
+            m.targets = decodeTargets(seq);
+        } else if (tag == BER.CONTEXT(4)) {
+            m.sources = decodeSources(seq);
+        } else if (tag == BER.CONTEXT(5)) {
+            m.connections = [];
+            seq = seq.getSequence(BER.EMBER_SEQUENCE);
+            while(seq.remain > 0) {
+                var conSeq = seq.getSequence(BER.CONTEXT(0));
+                m.connections.push(MatrixConnection.decode(conSeq));
+            }
+        }
+        else {
+            throw new errors.UnimplementedEmberTypeError(tag);
+        }
+    }
+    return m;
+};
+
+MatrixNode.prototype.encode = function(ber) {
+    ber.startSequence(BER.APPLICATION(13));
+
+    ber.startSequence(BER.CONTEXT(0));
+    ber.writeInt(this.number);
+    ber.endSequence(); // BER.CONTEXT(0)
+
+    if(this.contents !== undefined) {
+        ber.startSequence(BER.CONTEXT(1));
+        this.contents.encode(ber);
+        ber.endSequence(); // BER.CONTEXT(1)
+    }
+
+    if(this.children !== undefined) {
+        ber.startSequence(BER.CONTEXT(2));
+        ber.startSequence(BER.APPLICATION(4));
+        for(var i=0; i<this.children.length; i++) {
+            ber.startSequence(BER.CONTEXT(0));
+            this.children[i].encode(ber);
+            ber.endSequence();
+        }
+        ber.endSequence();
+        ber.endSequence();
+    }
+
+    if (this.targets !== undefined) {
+
+        ber = ber.startSequence(BER.CONTEXT(3));
+
+        for(var i=0; i<this.targets.length; i++) {
+            ber.startSequence(BER.CONTEXT(0));
+            ber.startSequence(BER.APPLICATION(14));
+            ber.startSequence(BER.CONTEXT(0));
+            ber.writeInt(this.targets[i]);
+            ber.endSequence();
+            ber.endSequence();
+            ber.endSequence();
+        }
+
+        ber.endSequence();
+    }
+
+    if (this.sources !== undefined) {
+        ber = ber.startSequence(BER.CONTEXT(4));
+
+        for(var i=0; i<this.sources.length; i++) {
+            ber.startSequence(BER.CONTEXT(0));
+            ber.startSequence(BER.APPLICATION(15));
+            ber.startSequence(BER.CONTEXT(0));
+            ber.writeInt(this.sources[i]);
+            ber.endSequence();
+            ber.endSequence();
+            ber.endSequence();
+        }
+
+        ber.endSequence();
+    }
+
+    if (this.connections !== undefined) {
+        ber.startSequence(BER.CONTEXT(5));
+        for(var i=0; i<this.sources.length; i++) {
+            ber.startSequence(BER.CONTEXT(0));
+            this.connections[i].encode(ber);
+            ber.endSequence();
+        }
+        ber.endSequence();
+    }
+
+    ber.endSequence(); // BER.APPLICATION(3)
+}
+
+util.inherits(MatrixNode, TreeNode);
+
+module.exports.MatrixNode = MatrixNode;
+
+function MatrixContents() {
+}
+
+MatrixContents.decode = function(ber) {
+    var mc = new MatrixContents();
+
+    //console.log("\n\n Matrix Content\n\n", ber.buffer);
+    ber = ber.getSequence(BER.EMBER_SET);
+
+
+    while(ber.remain > 0) {
+        var tag = ber.peek();
+        //console.log("Next tag", tag, ber.buffer);
+        var seq = ber.getSequence(tag);
+
+        if(tag == BER.CONTEXT(0)) {
+            mc.identifier = seq.readString(BER.EMBER_STRING);
+        } else if(tag == BER.CONTEXT(1)) {
+            mc.description = seq.readString(BER.EMBER_STRING);
+        } else if(tag == BER.CONTEXT(2)) {
+            mc.type = MatrixType.decode(seq);
+        } else if(tag == BER.CONTEXT(3)) {
+            mc.mode = MatrixMode.decode(seq);
+        } else if(tag == BER.CONTEXT(4)) {
+            mc.targetCount = seq.readInt();
+        } else if(tag == BER.CONTEXT(5)) {
+            mc.sourceCount = seq.readInt();
+        } else if(tag == BER.CONTEXT(6)) {
+            mc.maximumTotalConnects = seq.readInt();
+        } else if(tag == BER.CONTEXT(7)) {
+            mc.maximumConnectsPerTarget = seq.readInt();
+        } else if(tag == BER.CONTEXT(8)) {
+            mc.parametersLocation = seq.readInt();
+        } else if(tag == BER.CONTEXT(9)) {
+            mc.gainParameterNumber = seq.readInt();
+        } else if(tag == BER.CONTEXT(10)) {
+            mc.labels = [];
+            //console.log("\n\nLABEL\n\n",seq.buffer);
+            seq = seq.getSequence(BER.EMBER_SEQUENCE);
+            while(seq.remain > 0) {
+                var lSeq = seq.getSequence(BER.CONTEXT(0));
+                mc.labels.push(Label.decode(lSeq));
+            }
+            //console.log(mc);
+        } else if(tag == BER.CONTEXT(11)) {
+            mc.schemaIdentifiers = seq.readInt();
+        } else if(tag == BER.CONTEXT(12)) {
+            mc.templateReference = seq.readOID(BER.EMBER_RELATIVE_OID);
+        }
+        else {
+            throw new errors.UnimplementedEmberTypeError(tag);
+        }
+    }
+    //console.log("end of matrix contents");
+    return mc;
+};
+
+MatrixContents.prototype.encode = function(ber) {
+    ber.startSequence(BER.EMBER_SET);
+    if (this.identifier !== undefined) {
+        ber.startSequence(BER.CONTEXT(0));
+        ber.writeString(this.identifier);
+        ber.endSequence();
+    }
+    if (this.description !== undefined) {
+        ber.startSequence(BER.CONTEXT(1));
+        ber.writeString(this.description);
+        ber.endSequence();
+    }
+    if (this.type !== undefined) {
+        ber.startSequence(BER.CONTEXT(2));
+        this.type.encode(ber);
+        ber.endSequence();
+    }
+    if (this.mode !== undefined) {
+        ber.startSequence(BER.CONTEXT(3));
+        this.mode.encode(ber);
+        ber.endSequence();
+    }
+    if (this.targetCount !== undefined) {
+        ber.startSequence(BER.CONTEXT(4));
+        ber.writeInt(this.targetCount);
+        ber.endSequence();
+    }
+    if (this.sourceCount !== undefined) {
+        ber.startSequence(BER.CONTEXT(5));
+        ber.writeInt(this.sourceCount);
+        ber.endSequence();
+    }
+    if (this.maximumTotalConnects !== undefined) {
+        ber.startSequence(BER.CONTEXT(6));
+        ber.writeInt(this.maximumTotalConnects);
+        ber.endSequence();
+    }
+    if (this.maximumConnectsPerTarget !== undefined) {
+        ber.startSequence(BER.CONTEXT(7));
+        ber.writeInt(this.maximumConnectsPerTarget);
+        ber.endSequence();
+    }
+    if (this.parametersLocation !== undefined) {
+        ber.startSequence(BER.CONTEXT(8));
+        ber.writeInt(this.parametersLocation);
+        ber.endSequence();
+    }
+    if (this.gainParameterNumber !== undefined) {
+        ber.startSequence(BER.CONTEXT(9));
+        ber.writeInt(this.gainParameterNumber);
+        ber.endSequence();
+    }
+    if (this.labels !== undefined) {
+        ber.startSequence(BER.CONTEXT(10));
+        ber.startSequence(BER.EMBER_SEQUENCE);
+        for(var i =0; i < this.labels.length; i++) {
+            this.labels[i].encode(ber);
+        }
+        ber.endSequence();
+        ber.endSequence();
+    }
+    if (this.schemaIdentifiers !== undefined) {
+        ber.startSequence(BER.CONTEXT(11));
+        ber.writeInt(this.schemaIdentifiers);
+        ber.endSequence();
+    }
+    if (this.templateReference !== undefined) {
+        ber.startSequence(BER.CONTEXT(12));
+        ber.writeOID(this.templateReference, BER.EMBER_RELATIVE_OID);
+        ber.endSequence();
+    }
+    ber.endSequence();
+}
+
+decodeTargets = function(ber) {
+    let targets = [];
+
+    ber = ber.getSequence(BER.EMBER_SEQUENCE);
+
+
+    while(ber.remain > 0) {
+        var seq = ber.getSequence(BER.CONTEXT(0));
+        seq = seq.getSequence(BER.APPLICATION(14));
+        seq = seq.getSequence(BER.CONTEXT(0));
+        targets.push(seq.readInt());
+    }
+
+    return targets;
+}
+
+decodeSources = function(ber) {
+    let sources = [];
+
+    ber = ber.getSequence(BER.EMBER_SEQUENCE);
+
+    while(ber.remain > 0) {
+        var seq = ber.getSequence(BER.CONTEXT(0));
+        seq = seq.getSequence(BER.APPLICATION(15));
+        seq = seq.getSequence(BER.CONTEXT(0));
+        sources.push(seq.readInt());
+    }
+
+    return sources;
+};
+
+module.exports.MatrixContents = MatrixContents;
+
+
+
+function MatrixConnection() {
+
+}
+
+MatrixConnection.decode = function(ber) {
+    var c = new MatrixConnection();
+    ber = ber.getSequence(BER.APPLICATION(16));
+    ber = ber.getSequence(BER.EMBER_SEQUENCE);
+    while (ber.remain > 0) {
+        var tag = ber.peek();
+        var seq = ber.getSequence(tag);
+        if (tag == BER.CONTEXT(0)) {
+            c.target = seq.readInt();
+        }
+        else if (tag == BER.CONTEXT(1)) {
+            //sources
+            var sources = seq.readOID(BER.EMBER_RELATIVE_OID);
+            c.sources = sources.split(".");
+        } else if (tag == BER.CONTEXT(2)) {
+            c.operation = seq.readInt();
+            // ConnectionOperation ::=
+            //     INTEGER {
+            //     absolute (0), -- default. sources contains absolute information
+            //     connect (1), -- nToN only. sources contains sources to add to connection
+            //     disconnect (2) -- nToN only. sources contains sources to remove from
+            //     connection
+            // }
+        } else if (tag == BER.CONTEXT(3)) {
+            m.disposition = seq.readInt();
+            // ConnectionDisposition ::=
+            //     INTEGER {
+            //     tally (0), -- default
+            //     modified (1), -- sources contains new current state
+            //     pending (2), -- sources contains future state
+            //     locked (3) -- error: target locked. sources contains current state
+            //     -- more tbd.
+            // }
+        }
+        else {
+            throw new errors.UnimplementedEmberTypeError(tag);
+        }
+    }
+    return m;
+}
+
+MatrixConnection.prototype.encode = function(ber) {
+    ber.startSequence(BER.APPLICATION(16));
+    ber.startSequence(BER.EMBER_SEQUENCE);
+
+    ber.startSequence(BER.CONTEXT(0));
+    ber.writeInt(this.target);
+    ber.endSequence();
+
+    if (this.sources !== undefined) {
+        ber.startSequence(BER.CONTEXT(1));
+        ber.writeOID(this.sources.join("."), BER.EMBER_RELATIVE_OID);
+        ber.endSequence();
+    }
+    if (this.operation !== undefined) {
+        ber.startSequence(BER.CONTEXT(2));
+        ber.writeInt(this.operation);
+        ber.endSequence();
+    }
+    if (this.disposition !== undefined) {
+        ber.startSequence(BER.CONTEXT(3));
+        ber.writeInt(this.disposition);
+        ber.endSequence();
+    }
+    ber.endSequence();
+    ber.endSequence();
+}
+
+module.exports.MatrixConnection = MatrixConnection;
+
+function Label() {
+}
+
+Label.decode = function(ber) {
+    var l = {};
+
+    ber = ber.getSequence(BER.APPLICATION(18));
+
+    while (ber.remain > 0) {
+        var tag = ber.peek();
+        var seq = ber.getSequence(tag);
+        if (tag == BER.CONTEXT(0)) {
+            l.basePath = seq.readOID(BER.EMBER_RELATIVE_OID);
+        } else if (tag == BER.CONTEXT(1)) {
+            l.description = seq.readString(BER.EMBER_STRING);
+        }
+        else {
+            throw new errors.UnimplementedEmberTypeError(tag);
+        }
+    }
+    return l;
+};
+
+Label.prototype.encode = function(ber) {
+    ber.startSequence(BER.APPLICATION(18));
+    if (this.basePath !== undefined) {
+        ber.startSequence(BER.CONTEXT(0));
+        ber.writeOID(this.basePath, BER.EMBER_RELATIVE_OID);
+    }
+    if (this.description !== undefined) {
+        ber.startSequence(BER.CONTEXT(1));
+        ber.writeString(this.basePath);
+    }
+    ber.endSequence();
+}
+
+module.exports.Label = Label;
+
+
+function ParametersLocation() {
+}
+
+ParametersLocation.decode = function(ber) {
+    var tag = ber.peek();
+    ber = ber.getSequence(tag);
+    this.value = ber.readValue();
+}
+
+module.exports.ParametersLocation = ParametersLocation;
+
+function MatrixType() {
+    this.value = "oneToN";
+}
+
+MatrixType.decode = function(ber) {
+    var mt = new MatrixType();
+    var type = ber.readInt();
+
+    if (type === 1) {
+        mt.value = "oneToOne";
+    } else if (type === 2) {
+        mt.value = "nToN";
+    }
+    return mt;
+}
+
+MatrixType.prototype.encode = function(ber) {
+    if (this.type === "oneToOne") {
+        ber.writeInt(1);
+    }
+    else if (this.type === "nToN") {
+        ber.writeInt(2);
+    }
+    else {
+        ber.writeInt(0);
+    }
+}
+
+module.exports.MatrixType = MatrixType;
+
+function MatrixMode() {
+    this.value = "linear";
+}
+
+MatrixMode.decode = function(ber) {
+    var mt = new MatrixMode();
+    var mode = ber.readInt();
+
+    if (mode === 1) {
+        mt.value = "nonLinear";
+    }
+    return mt;
+}
+
+MatrixMode.prototype.encode = function(ber) {
+    if (this.type === "nonLinear") {
+        ber.writeInt(1);
+    }
+    else {
+        ber.writeInt(0);
+    }
+}
+
+module.exports.MatrixMode = MatrixMode;
+
+
+/****************************************************************************
+ * QualifiedMatrix
+ ***************************************************************************/
+
+function QualifiedMatrix(path) {
+    QualifiedMatrix.super_.call(this);
+    if (path != undefined) {
+        this.path = path;
+    }
+}
+
+util.inherits(QualifiedMatrix, TreeNode);
+
+
+QualifiedNoQualifiedMatrixde.decode = function(ber) {
+    var qm = new QualifiedMatrix();
+    ber = ber.getSequence(BER.APPLICATION(17));
+    while(ber.remain > 0) {
+        var tag = ber.peek();
+        var seq = ber.getSequence(tag);
+        if(tag == BER.CONTEXT(0)) {
+            qm.path = seq.readOID(BER.EMBER_RELATIVE_OID); // 13 => relative OID
+        }
+        else if(tag == BER.CONTEXT(1)) {
+            qm.contents = MatrixContents.decode(seq);
+        } else if(tag == BER.CONTEXT(2)) {
+            qm.children = [];
+            seq = seq.getSequence(BER.APPLICATION(4));
+            while(seq.remain > 0) {
+                var nodeSeq = seq.getSequence(BER.CONTEXT(0));
+                qm.addChild(Element.decode(nodeSeq));
+            }
+        } else if (tag == BER.CONTEXT(3)) {
+            qm.targets = decodeTargets(seq);
+        } else if (tag == BER.CONTEXT(4)) {
+            qm.sources = decodeSources(seq);
+        } else if (tag == BER.CONTEXT(5)) {
+            qm.connections = [];
+            seq = seq.getSequence(BER.EMBER_SEQUENCE);
+            while(seq.remain > 0) {
+                var conSeq = seq.getSequence(BER.CONTEXT(0));
+                qm.connections.push(MatrixConnection.decode(conSeq));
+            }
+        }
+        else {
+            throw new errors.UnimplementedEmberTypeError(tag);
+        }
+    }
+    return qm;
+}
+
+QualifiedMatrix.prototype.update = function(other) {
+    callbacks = QualifiedMatrix.super_.prototype.update.apply(this);
+    if (other !== undefined) {
+        if (other.contents !== undefined) {
+            this.contents = other.contents;
+        }
+        if (other.targets !== undefined) {
+            this.targets = other.targets;
+        }
+        if (other.sources !== undefined) {
+            this.sources = other.sources;
+        }
+        if (other.connections !== undefined) {
+            this.connections = other.connections;
+        }
+    }
+
+    return callbacks;
+}
+
+QualifiedMatrix.prototype.getDirectory = function(callback) {
+    if (this.path === undefined) {
+        throw new Error("Invalid path");
+    }
+    //console.log("Generating getDirectory command for node", this);
+    var r = new Root();
+    var qn = new QualifiedMatrix();
+    qn.path = this.path;
+    r.addElement(qn);
+    qn.addChild(new Command(COMMAND_GETDIRECTORY));
+    if(callback !== undefined) {
+        this._directoryCallbacks.push((error, node) => { callback(error, node) });
+    }
+    return r;
+}
+
+
+QualifiedMatrix.prototype.encode = function(ber) {
+    ber.startSequence(BER.APPLICATION(17));
+
+    ber.startSequence(BER.CONTEXT(0));
+    ber.writeOID(this.path, BER.EMBER_RELATIVE_OID);
+    ber.endSequence(); // BER.CONTEXT(0)
+
+    if(this.contents !== undefined) {
+        ber.startSequence(BER.CONTEXT(1));
+        this.contents.encode(ber);
+        ber.endSequence(); // BER.CONTEXT(1)
+    }
+
+    if(this.children !== undefined) {
+        ber.startSequence(BER.CONTEXT(2));
+        ber.startSequence(BER.APPLICATION(4));
+        for(var i=0; i<this.children.length; i++) {
+            ber.startSequence(BER.CONTEXT(0));
+            this.children[i].encode(ber);
+            ber.endSequence();
+        }
+        ber.endSequence();
+        ber.endSequence();
+    }
+
+    if (this.targets !== undefined) {
+        ber = ber.startSequence(BER.CONTEXT(3));
+
+        for(var i=0; i<this.targets.length; i++) {
+            ber.startSequence(BER.CONTEXT(0));
+            ber.startSequence(BER.APPLICATION(14));
+            ber.startSequence(BER.CONTEXT(0));
+            ber.writeInt(this.targets[i]);
+            ber.endSequence();
+            ber.endSequence();
+            ber.endSequence();
+        }
+
+        ber.endSequence();
+    }
+
+    if (this.sources !== undefined) {
+        ber = ber.startSequence(BER.CONTEXT(4));
+
+        for(var i=0; i<this.sources.length; i++) {
+            ber.startSequence(BER.CONTEXT(0));
+            ber.startSequence(BER.APPLICATION(15));
+            ber.startSequence(BER.CONTEXT(0));
+            ber.writeInt(this.sources[i]);
+            ber.endSequence();
+            ber.endSequence();
+            ber.endSequence();
+        }
+
+        ber.endSequence();
+    }
+
+    if (this.connections !== undefined) {
+        ber.startSequence(BER.CONTEXT(5));
+        for(var i=0; i<this.sources.length; i++) {
+            ber.startSequence(BER.CONTEXT(0));
+            this.connections[i].encode(ber);
+            ber.endSequence();
+        }
+        ber.endSequence();
+    }
+
+    ber.endSequence(); // BER.APPLICATION(3)
+}
+
+module.exports.QualifiedMatrix = QualifiedMatrix;
+
 /****************************************************************************
  * NodeContents
  ***************************************************************************/
@@ -558,22 +1202,24 @@ function NodeContents() {
     this.isOnline = true;
 };
 
+
+
 NodeContents.decode = function(ber) {
     var nc = new NodeContents();
     ber = ber.getSequence(BER.EMBER_SET);
-
     while(ber.remain > 0) {
-        var tag = ber.readSequence();
+        var tag = ber.peek();
+        var seq = ber.getSequence(tag);
         if(tag == BER.CONTEXT(0)) {
-            nc.identifier = ber.readString(BER.EMBER_STRING);
+            nc.identifier = seq.readString(BER.EMBER_STRING);
         } else if(tag == BER.CONTEXT(1)) {
-            nc.description = ber.readString(BER.EMBER_STRING);
+            nc.description = seq.readString(BER.EMBER_STRING);
         } else if(tag == BER.CONTEXT(2)) {
-            nc.isRoot = ber.readBoolean();
+            nc.isRoot = seq.readBoolean();
         } else if(tag == BER.CONTEXT(3)) {
-            nc.isOnline = ber.readBoolean();
+            nc.isOnline = seq.readBoolean();
         } else if(tag == BER.CONTEXT(4)) {
-            nc.schemaIdentifiers = ber.readString(BER.EMBER_STRING);
+            nc.schemaIdentifiers = seq.readString(BER.EMBER_STRING);
         } else {
             throw new errors.UnimplementedEmberTypeError(tag);
         }
@@ -634,9 +1280,10 @@ Command.decode = function(ber) {
     ber = ber.getSequence(BER.APPLICATION(2));
 
     while(ber.remain > 0) {
-        var tag = ber.readSequence();
+        var tag = ber.peek();
+        var seq = ber.getSequence(tag);
         if(tag == BER.CONTEXT(0)) {
-            c.number = ber.readInt();
+            c.number = seq.readInt();
         } else {
             // TODO: options
             throw new errors.UnimplementedEmberTypeError(tag);
@@ -679,22 +1326,23 @@ QualifiedParameter.decode = function(ber) {
     var qp = new QualifiedParameter();
     ber = ber.getSequence(BER.APPLICATION(9));
     while(ber.remain > 0) {
-        var tag = ber.readSequence();
+        var tag = ber.peek();
+        var seq = ber.getSequence(tag);
         if(tag == BER.CONTEXT(0)) {
-            qp.path = ber.readOID(13); // 13 => relative OID
+            qp.path = seq.readOID(BER.EMBER_RELATIVE_OID); // 13 => relative OID
             //console.log("Decoded path",qp.path);
         }
         else if(tag == BER.CONTEXT(1)) {
             //console.log("Decoding content");
-            qp.contents = ParameterContents.decode(ber);
+            qp.contents = ParameterContents.decode(seq);
             //console.log("Decoded content",qp.contents);
         } else if(tag == BER.CONTEXT(2)) {
             qp.children = [];
             //console.log("Decoding children");
-            var seq = ber.getSequence(BER.APPLICATION(4));
+            seq = seq.getSequence(BER.APPLICATION(4));
             while(seq.remain > 0) {
-                seq.readSequence(BER.CONTEXT(0));
-                qp.addChild(Element.decode(seq));
+                var nodeSeq = seq.getSequence(BER.CONTEXT(0));
+                qp.addChild(Element.decode(nodeSeq));
             }
         } else {
             return qp;
@@ -708,7 +1356,7 @@ QualifiedParameter.prototype.encode = function(ber) {
     ber.startSequence(BER.APPLICATION(9));
 
     ber.startSequence(BER.CONTEXT(0));
-    ber.writeOID(this.path, 13);
+    ber.writeOID(this.path, BER.EMBER_RELATIVE_OID);
     ber.endSequence(); // BER.CONTEXT(0)
 
     if(this.contents !== undefined) {
@@ -748,7 +1396,7 @@ QualifiedParameter.prototype.getDirectory = function(callback) {
     let qp = new QualifiedParameter();
     qp.path = this.path;
     r.addElement(qp);
-    qp.addChild(new Command(32));
+    qp.addChild(new Command(COMMAND_GETDIRECTORY));
     if(callback !== undefined) {
         this._directoryCallbacks.push((error, node) => { callback(error, node) });
     }
@@ -765,7 +1413,6 @@ QualifiedParameter.prototype.setValue = function(value, callback) {
     r.addElement(qp);
     qp.path = this.path;
     qp.contents = new ParameterContents(value);
-    //console.log(JSON.stringify(r));
     return r;
 }
 
@@ -787,17 +1434,18 @@ Parameter.decode = function(ber) {
     ber = ber.getSequence(BER.APPLICATION(1));
 
     while(ber.remain > 0) {
-        var tag = ber.readSequence();
+        var tag = ber.peek();
+        var seq = ber.getSequence(tag);
         if(tag == BER.CONTEXT(0)) {
-            p.number = ber.readInt();
+            p.number = seq.readInt();
         } else if(tag == BER.CONTEXT(1)) {
-            p.contents = ParameterContents.decode(ber);
+            p.contents = ParameterContents.decode(seq);
         } else if(tag == BER.CONTEXT(2)) {
+            seq = seq.getSequence(BER.APPLICATION(4));
             p.children = [];
-            var seq = ber.getSequence(BER.APPLICATION(4));
             while(seq.remain > 0) {
-                seq.readSequence(BER.CONTEXT(0));
-                p.addChild(Element.decode(seq));
+                var paramSeq = seq.getSequence(BER.CONTEXT(0));
+                p.addChild(Element.decode(paramSeq));
             }
         } else {
             throw new errors.UnimplementedEmberTypeError(tag);
@@ -892,43 +1540,44 @@ ParameterContents.decode = function(ber) {
     ber = ber.getSequence(BER.EMBER_SET);
 
     while(ber.remain > 0) {
-        var tag = ber.readSequence();
+        var tag = ber.peek();
+        var seq = ber.getSequence(tag);
         if(tag == BER.CONTEXT(0)) {
-            pc.identifier = ber.readString(BER.EMBER_STRING);
+            pc.identifier = seq.readString(BER.EMBER_STRING);
         } else if(tag == BER.CONTEXT(1)) {
-            pc.description = ber.readString(BER.EMBER_STRING);
+            pc.description = seq.readString(BER.EMBER_STRING);
         } else if(tag == BER.CONTEXT(2)) {
-            pc.value = ber.readValue();
+            pc.value = seq.readValue();
         } else if(tag == BER.CONTEXT(3)) {
-            pc.minimum = ber.readValue();
+            pc.minimum = seq.readValue();
         } else if(tag == BER.CONTEXT(4)) {
-            pc.maximum = ber.readValue();
+            pc.maximum = seq.readValue();
         } else if(tag == BER.CONTEXT(5)) {
-            pc.access = ParameterAccess.get(ber.readInt());
+            pc.access = ParameterAccess.get(seq.readInt());
         } else if(tag == BER.CONTEXT(6)) {
-            pc.format = ber.readString(BER.EMBER_STRING);
+            pc.format = seq.readString(BER.EMBER_STRING);
         } else if(tag == BER.CONTEXT(7)) {
-            pc.enumeration = ber.readString(BER.EMBER_STRING);
+            pc.enumeration = seq.readString(BER.EMBER_STRING);
         } else if(tag == BER.CONTEXT(8)) {
-            pc.factor = ber.readInt();
+            pc.factor = seq.readInt();
         } else if(tag == BER.CONTEXT(9)) {
-            pc.isOnline = ber.readBoolean();
+            pc.isOnline = seq.readBoolean();
         } else if(tag == BER.CONTEXT(10)) {
-            pc.formula = ber.readString(BER.EMBER_STRING);
+            pc.formula = seq.readString(BER.EMBER_STRING);
         } else if(tag == BER.CONTEXT(11)) {
-            pc.step = ber.readInt();
+            pc.step = seq.readInt();
         } else if(tag == BER.CONTEXT(12)) {
-            pc.default = ber.readValue();
+            pc.default = seq.readValue();
         } else if(tag == BER.CONTEXT(13)) {
-            pc.type = ParameterType.get(ber.readInt());
+            pc.type = ParameterType.get(seq.readInt());
         } else if(tag == BER.CONTEXT(14)) {
-            pc.streamIdentifier = ber.readInt();
+            pc.streamIdentifier = seq.readInt();
         } else if(tag == BER.CONTEXT(15)) {
-            pc.enumMap = StringIntegerCollection.decode(ber);
+            pc.enumMap = StringIntegerCollection.decode(seq);
         } else if(tag == BER.CONTEXT(16)) {
-            pc.streamDescriptor = StreamDescription.decode(ber);
+            pc.streamDescriptor = StreamDescription.decode(seq);
         } else if(tag == BER.CONTEXT(17)) {
-            pc.schemaIdentifiers = ber.readString(BER.EMBER_STRING);
+            pc.schemaIdentifiers = seq.readString(BER.EMBER_STRING);
         } else if (tag == null) {
             break;
         }
@@ -936,7 +1585,6 @@ ParameterContents.decode = function(ber) {
             throw new errors.UnimplementedEmberTypeError(tag);
         }
     }
-    //console.log("decoded content", pc);
     return pc;
 }
 
@@ -988,15 +1636,16 @@ StringIntegerCollection.decode = function(ber) {
     var enumMap = {};
     ber = ber.getSequence(BER.APPLICATION(8));
     while(ber.remain > 0) {
-        ber.readSequence(BER.CONTEXT(0));
-        var seq = ber.getSequence(BER.APPLICATION(7));
+        var seq = ber.getSequence(BER.CONTEXT(0));
+        seq = seq.getSequence(BER.APPLICATION(7));
         var entryString, entryInteger;
         while(seq.remain > 0) {
-            var tag = seq.readSequence();
+            var tag = seq.peek();
+            var dataSeq = seq.getSequence(tag);
             if(tag == BER.CONTEXT(0)) {
-                entryString = seq.readString(BER.EMBER_STRING);
+                entryString = dataSeq.readString(BER.EMBER_STRING);
             } else if(tag == BER.CONTEXT(1)) {
-                entryInteger = seq.readInt();
+                entryInteger = dataSeq.readInt();
             } else {
                 throw new errors.UnimplementedEmberTypeError(tag);
             }
@@ -1057,11 +1706,12 @@ StreamDescription.decode = function(ber) {
     ber = ber.getSequence(BER.APPLICATION(12));
 
     while(ber.remain > 0) {
-        var tag = ber.readSequence();
+        var tag = ber.peek();
+        var seq =ber.getSequence(tag);
         if(tag == BER.CONTEXT(0)) {
-            sd.format = StreamFormat.get(ber.readInt());
+            sd.format = StreamFormat.get(seq.readInt());
         } else if(tag == BER.CONTEXT(1)) {
-            sd.offset = ber.readInt();
+            sd.offset = seq.readInt();
         } else {
             throw new errors.UnimplementedEmberTypeError(tag);
         }

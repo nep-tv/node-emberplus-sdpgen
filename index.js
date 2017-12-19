@@ -1,5 +1,3 @@
-const DeviceTree = require('./device.js');
+const EMBERPLUS = require('./device.js');
 
-module.exports = {
-    DeviceTree
-}
+module.exports =  EMBERPLUS;

@@ -3,6 +3,7 @@ const util = require('util');
 const Promise = require('bluebird');
 const S101Client = require('./client.js');
 const ember = require('./ember.js');
+const BER = require('./ber.js');
 const errors = require('./errors.js');
 
 
@@ -50,6 +51,10 @@ function DeviceTree(host, port) {
 
 util.inherits(DeviceTree, EventEmitter);
 
+DecodeBuffer = function(packet) {
+     var ber = new BER.Reader(packet);
+     return ember.Root.decode(ber);
+}
 
 DeviceTree.prototype.expand = function(node)
 {
@@ -306,4 +311,4 @@ function TreePath(path) {
 }
 
 
-module.exports = DeviceTree;
+module.exports = {DeviceTree, DecodeBuffer};

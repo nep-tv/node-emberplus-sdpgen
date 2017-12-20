@@ -65,13 +65,12 @@ S101Client.prototype.connect = function() {
 
     self.socket.on('close', () => {
         self.emit('disconnected');
+        self.status = "disconnected";
         self.socket = null;
     });
 
     self.socket.on('error', (e) => {
-        //self.emit('disconnected');
-        //self.socket = null;
-        //console.log("Socket error", e);
+        self.emit("error", e);
     });
 }
 
@@ -80,6 +79,7 @@ S101Client.prototype.disconnect = function() {
     if(self.socket !== null) {
         self.socket.destroy();
         self.socket = null;
+        self.status = "disconnected";
     }
 }
 

@@ -24,22 +24,21 @@ function DeviceTree(host, port) {
     });
 
     self.client.on('connected', () => {
-        // self.root.clear();
-        // self.client.sendBERNode(self.root.getDirectory((node) => {
-        //     self.emit('ready');
-        // }));
         self.emit('connected');
+        if (self.callback !== undefined) {
+            self.callback();
+        }
     });
 
     self.client.on('disconnected', () => {
         self.emit('disconnected');
-        self.connectTimeout = setTimeout(() => {
-            self.client.connect();
-        }, 10000);
     });
 
     self.client.on("error", (e) => {
         self.emit("error", e);
+        if (self.callback !== undefined) {
+            self.callback(e);
+        }
     });
 
     self.client.on('emberTree', (root) => {
@@ -59,7 +58,15 @@ DecodeBuffer = function(packet) {
 }
 
 DeviceTree.prototype.connect = function() {
-    this.client.connect();
+    return new Promise((resolve, reject) => {
+        this.callback = (e) => {
+            if (e === undefined) {
+                return resolve();
+            }
+            return reject(e);
+        };
+        this.client.connect();
+    });
 }
 
 DeviceTree.prototype.expand = function(node)

@@ -70,6 +70,8 @@ Root.prototype.addElement = function(ele) {
     this.elements.push(ele);
 }
 
+
+
 Root.prototype.addChild = function(child) {
     this.addElement(child);
 }
@@ -119,6 +121,18 @@ TreeNode.prototype.addChild = function(child) {
         this.children = [];
     }
     this.children.push(child);
+}
+
+TreeNode.prototype.isParameter = function() {
+    return ((this instanceof MatrixNode) || (this instanceof QualifiedMatrix));
+}
+
+TreeNode.prototype.isMatrix = function() {
+    return ((this instanceof Parameter) || (this instanceof QualifiedParameter));
+}
+
+TreeNode.prototype.isFunction = function() {
+    return (this instanceof QualifiedFunction);
 }
 
 TreeNode.prototype.addCallback = function(callback) {

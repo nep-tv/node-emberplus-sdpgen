@@ -123,11 +123,11 @@ TreeNode.prototype.addChild = function(child) {
     this.children.push(child);
 }
 
-TreeNode.prototype.isParameter = function() {
+TreeNode.prototype.isMatrix = function() {
     return ((this instanceof MatrixNode) || (this instanceof QualifiedMatrix));
 }
 
-TreeNode.prototype.isMatrix = function() {
+TreeNode.prototype.isParameter = function() {
     return ((this instanceof Parameter) || (this instanceof QualifiedParameter));
 }
 

@@ -1545,10 +1545,10 @@ module.exports.Command = Command;
  * QualifiedParameter
  ***************************************************************************/
 
-function QualifiedParameter(number) {
+function QualifiedParameter(path) {
     QualifiedParameter.super_.call(this);
-    if(number !== undefined)
-        this.number = number;
+    if(path !== undefined)
+        this.path = path;
 }
 
 util.inherits(QualifiedParameter, TreeNode);

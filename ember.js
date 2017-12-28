@@ -1642,9 +1642,8 @@ QualifiedParameter.prototype.setValue = function(value, callback) {
     }
 
     let r = new Root();
-    let qp = new QualifiedParameter();
+    let qp = new QualifiedParameter(this.path);
     r.addElement(qp);
-    qp.path = this.path;
     qp.contents = new ParameterContents(value);
     return r;
 }

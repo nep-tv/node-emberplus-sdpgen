@@ -22,7 +22,7 @@ function S101Client(address, port) {
 
 util.inherits(S101Client, EventEmitter);
 
-S101Client.prototype.connect = function() {
+S101Client.prototype.connect = function(timeout = 2) {
     var self = this;
     if (self.status !== "disconnected") {
         return;
@@ -31,8 +31,21 @@ S101Client.prototype.connect = function() {
     self.emit('connecting');
     //console.log("socket connecting");
 
+    if (timeout > 0) {
+        self._timeout = timeout;
+        self._timer = setTimeout(() => {
+            self.socket = undefined;
+            self.emit("error", new Error("connection timeout"));
+        }, 1000 * timeout);
+    }
+
     self.socket = net.createConnection(self.port, self.address, () => {
         winston.debug('socket connected');
+
+        if (self._timer) {
+            clearTimeout(self._timer);
+        }
+
 
         setInterval(() => {
             self.sendKeepaliveRequest();
@@ -58,6 +71,7 @@ S101Client.prototype.connect = function() {
 
         self.emit('connected');
     });
+
 
     self.socket.on('data', (data) => {
         self.codec.dataIn(data);
@@ -103,11 +117,7 @@ S101Client.prototype.sendBER = function(data) {
     var self = this;
     var frames = self.codec.encodeBER(data);
     for(var i=0; i<frames.length; i++) {
-        //console.log(frames);
         self.socket.write(frames[i]);
-        //winston.info('sent frame', self.codec.validateFrame(frames[i].slice(1, frames[i].length-1)));
-        //console.log(frames[i], 
-        //    self.codec.validateFrame(frames[i].slice(1, frames[i].length-1)));
     }
 }
 

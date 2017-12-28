@@ -16,7 +16,6 @@ function DeviceTree(host, port) {
     self.pendingRequests = [];
     self.activeRequest = null;
     self.timeout = null;
-    self.connectTimeout = null;
     self.callback = undefined;
 
     self.client.on('connecting', () => {
@@ -57,7 +56,7 @@ DecodeBuffer = function(packet) {
      return ember.Root.decode(ber);
 }
 
-DeviceTree.prototype.connect = function() {
+DeviceTree.prototype.connect = function(timeout = 2) {
     return new Promise((resolve, reject) => {
         this.callback = (e) => {
             if (e === undefined) {
@@ -65,7 +64,7 @@ DeviceTree.prototype.connect = function() {
             }
             return reject(e);
         };
-        this.client.connect();
+        this.client.connect(timeout);
     });
 }
 
@@ -129,10 +128,12 @@ DeviceTree.prototype.makeRequest = function() {
     var self=this;
     if(self.activeRequest === null && self.pendingRequests.length > 0) {
         self.activeRequest = self.pendingRequests.shift();
-        self.activeRequest();
+
         self.timeout = setTimeout(() => {
             self.timeoutRequest();
         }, self.timeoutValue);
+
+        self.activeRequest();
     }
 };
 

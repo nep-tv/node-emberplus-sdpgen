@@ -135,6 +135,13 @@ TreeNode.prototype.isFunction = function() {
     return (this instanceof QualifiedFunction);
 }
 
+TreeNode.prototype.isQualified = function() {
+    return ((this instanceof QualifiedParameter)||
+    (this instanceof QualifiedNode) ||
+    (this instanceof QualifiedMatrix) ||
+    (this instanceof QualifiedFunction));
+}
+
 TreeNode.prototype.addCallback = function(callback) {
     if(this._callbacks.indexOf(callback) < 0) {
         this._callbacks.push(callback);
@@ -654,7 +661,8 @@ MatrixNode.prototype.encode = function(ber) {
 
     if (this.targets !== undefined) {
 
-        ber = ber.startSequence(BER.CONTEXT(3));
+        ber.startSequence(BER.CONTEXT(3));
+        ber.startSequence(BER.EMBER_SEQUENCE);
 
         for(var i=0; i<this.targets.length; i++) {
             ber.startSequence(BER.CONTEXT(0));
@@ -667,10 +675,12 @@ MatrixNode.prototype.encode = function(ber) {
         }
 
         ber.endSequence();
+        ber.endSequence();
     }
 
     if (this.sources !== undefined) {
-        ber = ber.startSequence(BER.CONTEXT(4));
+        ber.startSequence(BER.CONTEXT(4));
+        ber.startSequence(BER.EMBER_SEQUENCE);
 
         for(var i=0; i<this.sources.length; i++) {
             ber.startSequence(BER.CONTEXT(0));
@@ -682,6 +692,7 @@ MatrixNode.prototype.encode = function(ber) {
             ber.endSequence();
         }
 
+        ber.endSequence();
         ber.endSequence();
     }
 
@@ -763,12 +774,12 @@ MatrixContents.prototype.encode = function(ber) {
     ber.startSequence(BER.EMBER_SET);
     if (this.identifier !== undefined) {
         ber.startSequence(BER.CONTEXT(0));
-        ber.writeString(this.identifier);
+        ber.writeString(this.identifier, BER.EMBER_STRING);
         ber.endSequence();
     }
     if (this.description !== undefined) {
         ber.startSequence(BER.CONTEXT(1));
-        ber.writeString(this.description);
+        ber.writeString(this.description, BER.EMBER_STRING);
         ber.endSequence();
     }
     if (this.type !== undefined) {
@@ -815,14 +826,16 @@ MatrixContents.prototype.encode = function(ber) {
         ber.startSequence(BER.CONTEXT(10));
         ber.startSequence(BER.EMBER_SEQUENCE);
         for(var i =0; i < this.labels.length; i++) {
+            ber.startSequence(BER.CONTEXT(0));
             this.labels[i].encode(ber);
+            ber.endSequence();
         }
         ber.endSequence();
         ber.endSequence();
     }
     if (this.schemaIdentifiers !== undefined) {
         ber.startSequence(BER.CONTEXT(11));
-        ber.writeInt(this.schemaIdentifiers);
+        ber.writeInt(this.schemaIdentifiers, BER.EMBER_STRING);
         ber.endSequence();
     }
     if (this.templateReference !== undefined) {
@@ -946,7 +959,7 @@ function Label() {
 }
 
 Label.decode = function(ber) {
-    var l = {};
+    var l = new Label();
 
     ber = ber.getSequence(BER.APPLICATION(18));
 
@@ -970,10 +983,12 @@ Label.prototype.encode = function(ber) {
     if (this.basePath !== undefined) {
         ber.startSequence(BER.CONTEXT(0));
         ber.writeOID(this.basePath, BER.EMBER_RELATIVE_OID);
+        ber.endSequence();
     }
     if (this.description !== undefined) {
         ber.startSequence(BER.CONTEXT(1));
         ber.writeString(this.basePath);
+        ber.endSequence();
     }
     ber.endSequence();
 }
@@ -1162,7 +1177,7 @@ QualifiedMatrix.prototype.encode = function(ber) {
     }
 
     if (this.targets !== undefined) {
-        ber = ber.startSequence(BER.CONTEXT(3));
+        ber.startSequence(BER.CONTEXT(3));
 
         for(var i=0; i<this.targets.length; i++) {
             ber.startSequence(BER.CONTEXT(0));
@@ -1178,7 +1193,7 @@ QualifiedMatrix.prototype.encode = function(ber) {
     }
 
     if (this.sources !== undefined) {
-        ber = ber.startSequence(BER.CONTEXT(4));
+        ber.startSequence(BER.CONTEXT(4));
 
         for(var i=0; i<this.sources.length; i++) {
             ber.startSequence(BER.CONTEXT(0));
@@ -1761,11 +1776,16 @@ var ParameterType = new Enum({
     octets: 7
 });
 
+module.exports.ParameterAccess = ParameterAccess;
+module.exports.ParameterType = ParameterType;
+
 function ParameterContents(value) {
     if(value !== undefined) {
         this.value = value;
     }
 };
+
+module.exports.ParameterContents = ParameterContents;
 
 ParameterContents.decode = function(ber) {
     var pc = new ParameterContents();

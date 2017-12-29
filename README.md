@@ -15,6 +15,8 @@ It has been tested with EVS XT4k and Embrionix IP solutions.
 The current version has added new features to the initial commit but it also modified
 the way the lib is used so that now it uses Promise
 
+Server has been added in version 1.6.0.
+
 ## Example usage
 
 ```javascript
@@ -44,3 +46,8 @@ const fs = require("fs");
 fs.readFile("tree.ember", (e,data) => {
    var root = Decoder(data);
 });
+
+// Server
+const TreeServer = require("emberplus").TreeServer;
+const server = new TreeServer("127.0.0.1", 9000, root);
+server.listen().then(() => { console.log("listening"); }).catch((e) => { console.log(e.stack); });

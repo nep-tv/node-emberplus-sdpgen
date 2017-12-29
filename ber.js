@@ -314,7 +314,7 @@ ExtendedWriter.prototype.writeIfDefined = function(property, writer, outer, inne
 
 ExtendedWriter.prototype.writeIfDefinedEnum = function(property, type, writer, outer, inner) {
     if(property !== undefined) {
-        this.startSequence(BER.CONTEXT(outer));
+        this.startSequence(CONTEXT(outer));
         if(property.value !== undefined) {
             writer.call(this, property.value, inner);
         } else {

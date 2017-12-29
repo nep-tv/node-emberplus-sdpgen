@@ -215,8 +215,8 @@ _getElementByPath = function(children, pathArray, path) {
     for (var i = 0; i < children.length; i++) {
         //console.log("looking at child", JSON.stringify(children[i]));
 
-        if ((children[i].path === currPath)||
-            (children[i].number === number)){
+        if ((children[i].path == currPath)||
+            (children[i].number == number)){
             if (path.length === 0) {
                 return children[i];
             }

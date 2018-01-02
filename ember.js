@@ -233,14 +233,27 @@ TreeNode.prototype.getElementByPath = function(path) {
     if ((children === null)||(children === undefined))  {
         return null;
     }
+
+    var myPath = this.getPath();
+    if (path == myPath) {
+        return this;
+    }
+    var myPathArray = [];
+    if (this._parent) {
+        myPathArray = myPath.split(".");
+    }
     path = path.split(".");
 
-    if (path.length > 2) {
-        pathArray = path.splice(0,2);
+    if (path.length > myPathArray.length) {
+        pathArray = path.splice(0, myPath.length + 1);
+        for(var i = 0; i < pathArray.length - 1; i++) {
+            if (pathArray[i] != myPathArray[i]) {
+                return null;
+            }
+        }
     }
     else {
-        pathArray = path;
-        path = [];
+        return null;
     }
     return _getElementByPath(children, pathArray, path);
 }
@@ -431,7 +444,7 @@ QualifiedNode.decode = function(ber) {
         var tag = ber.peek();
         var seq = ber.getSequence(tag);
         if(tag == BER.CONTEXT(0)) {
-            qn.path = seq.readOID(BER.EMBER_RELATIVE_OID); // 13 => relative OID
+            qn.path = seq.readRelativeOID(BER.EMBER_RELATIVE_OID); // 13 => relative OID
         }
         else if(tag == BER.CONTEXT(1)) {
             qn.contents = NodeContents.decode(seq);
@@ -478,7 +491,7 @@ QualifiedNode.prototype.encode = function(ber) {
     ber.startSequence(BER.APPLICATION(10));
 
     ber.startSequence(BER.CONTEXT(0));
-    ber.writeOID(this.path, BER.EMBER_RELATIVE_OID);
+    ber.writeRelativeOID(this.path, BER.EMBER_RELATIVE_OID);
     ber.endSequence(); // BER.CONTEXT(0)
 
     if(this.contents !== undefined) {
@@ -620,11 +633,14 @@ MatrixNode.decode = function(ber) {
         } else if (tag == BER.CONTEXT(4)) {
             m.sources = decodeSources(seq);
         } else if (tag == BER.CONTEXT(5)) {
-            m.connections = [];
+            m.connections = {};
             seq = seq.getSequence(BER.EMBER_SEQUENCE);
             while(seq.remain > 0) {
                 var conSeq = seq.getSequence(BER.CONTEXT(0));
-                m.connections.push(MatrixConnection.decode(conSeq));
+                var con = MatrixConnection.decode(conSeq);
+                if (con.target !== undefined) {
+                    m.connections[con.target] = con;
+                }
             }
         }
         else {
@@ -698,15 +714,22 @@ MatrixNode.prototype.encode = function(ber) {
 
     if (this.connections !== undefined) {
         ber.startSequence(BER.CONTEXT(5));
-        for(var i=0; i<this.sources.length; i++) {
+        for(var id in this.connections) {
             ber.startSequence(BER.CONTEXT(0));
-            this.connections[i].encode(ber);
+            this.connections[id].encode(ber);
             ber.endSequence();
         }
         ber.endSequence();
     }
 
     ber.endSequence(); // BER.APPLICATION(3)
+}
+
+MatrixNode.prototype.connect = function(connections) {
+    let r = this.getTreeBranch();
+    let m = r.getElementByPath(this.getPath());
+    m.connections = connections;
+    return r;
 }
 
 util.inherits(MatrixNode, TreeNode);
@@ -760,7 +783,7 @@ MatrixContents.decode = function(ber) {
         } else if(tag == BER.CONTEXT(11)) {
             mc.schemaIdentifiers = seq.readInt();
         } else if(tag == BER.CONTEXT(12)) {
-            mc.templateReference = seq.readOID(BER.EMBER_RELATIVE_OID);
+            mc.templateReference = seq.readRelativeOID(BER.EMBER_RELATIVE_OID);
         }
         else {
             throw new errors.UnimplementedEmberTypeError(tag);
@@ -840,7 +863,7 @@ MatrixContents.prototype.encode = function(ber) {
     }
     if (this.templateReference !== undefined) {
         ber.startSequence(BER.CONTEXT(12));
-        ber.writeOID(this.templateReference, BER.EMBER_RELATIVE_OID);
+        ber.writeRelativeOID(this.templateReference, BER.EMBER_RELATIVE_OID);
         ber.endSequence();
     }
     ber.endSequence();
@@ -877,18 +900,54 @@ decodeSources = function(ber) {
     return sources;
 };
 
+
 module.exports.MatrixContents = MatrixContents;
 
 
 
-function MatrixConnection() {
+function MatrixConnection(target) {
+    if (target) {
+        this.target = target;
+    }
+
 
 }
+
+// ConnectionOperation ::=
+//     INTEGER {
+//     absolute (0), -- default. sources contains absolute information
+//     connect (1), -- nToN only. sources contains sources to add to connection
+//     disconnect (2) -- nToN only. sources contains sources to remove from
+//     connection
+// }
+var MatrixOperation = new Enum({
+    absolute: 0,
+    connect: 1,
+    disconnect: 2
+});
+
+// ConnectionDisposition ::=
+//     INTEGER {
+//     tally (0), -- default
+//     modified (1), -- sources contains new current state
+//     pending (2), -- sources contains future state
+//     locked (3) -- error: target locked. sources contains current state
+//     -- more tbd.
+// }
+var MatrixDisposition = new Enum({
+    tally: 0,
+    modified: 1,
+    pending: 2,
+    locked: 3
+});
+
+module.exports.MatrixOperation = MatrixOperation;
+module.exports.MatrixDisposition = MatrixDisposition;
+
 
 MatrixConnection.decode = function(ber) {
     var c = new MatrixConnection();
     ber = ber.getSequence(BER.APPLICATION(16));
-    ber = ber.getSequence(BER.EMBER_SEQUENCE);
     while (ber.remain > 0) {
         var tag = ber.peek();
         var seq = ber.getSequence(tag);
@@ -897,38 +956,23 @@ MatrixConnection.decode = function(ber) {
         }
         else if (tag == BER.CONTEXT(1)) {
             //sources
-            var sources = seq.readOID(BER.EMBER_RELATIVE_OID);
+            var sources = seq.readRelativeOID(BER.EMBER_RELATIVE_OID);
             c.sources = sources.split(".");
         } else if (tag == BER.CONTEXT(2)) {
-            c.operation = seq.readInt();
-            // ConnectionOperation ::=
-            //     INTEGER {
-            //     absolute (0), -- default. sources contains absolute information
-            //     connect (1), -- nToN only. sources contains sources to add to connection
-            //     disconnect (2) -- nToN only. sources contains sources to remove from
-            //     connection
-            // }
+            c.operation = MatrixOperation.get(seq.readInt());
+
         } else if (tag == BER.CONTEXT(3)) {
-            m.disposition = seq.readInt();
-            // ConnectionDisposition ::=
-            //     INTEGER {
-            //     tally (0), -- default
-            //     modified (1), -- sources contains new current state
-            //     pending (2), -- sources contains future state
-            //     locked (3) -- error: target locked. sources contains current state
-            //     -- more tbd.
-            // }
+            c.disposition = MatrixDisposition.get(seq.readInt());
         }
         else {
             throw new errors.UnimplementedEmberTypeError(tag);
         }
     }
-    return m;
+    return c;
 }
 
 MatrixConnection.prototype.encode = function(ber) {
     ber.startSequence(BER.APPLICATION(16));
-    ber.startSequence(BER.EMBER_SEQUENCE);
 
     ber.startSequence(BER.CONTEXT(0));
     ber.writeInt(this.target);
@@ -936,20 +980,19 @@ MatrixConnection.prototype.encode = function(ber) {
 
     if (this.sources !== undefined) {
         ber.startSequence(BER.CONTEXT(1));
-        ber.writeOID(this.sources.join("."), BER.EMBER_RELATIVE_OID);
+        ber.writeRelativeOID(this.sources.join("."), BER.EMBER_RELATIVE_OID);
         ber.endSequence();
     }
     if (this.operation !== undefined) {
         ber.startSequence(BER.CONTEXT(2));
-        ber.writeInt(this.operation);
+        ber.writeInt(this.operation.value);
         ber.endSequence();
     }
     if (this.disposition !== undefined) {
         ber.startSequence(BER.CONTEXT(3));
-        ber.writeInt(this.disposition);
+        ber.writeInt(this.disposition.value);
         ber.endSequence();
     }
-    ber.endSequence();
     ber.endSequence();
 }
 
@@ -967,7 +1010,7 @@ Label.decode = function(ber) {
         var tag = ber.peek();
         var seq = ber.getSequence(tag);
         if (tag == BER.CONTEXT(0)) {
-            l.basePath = seq.readOID(BER.EMBER_RELATIVE_OID);
+            l.basePath = seq.readRelativeOID(BER.EMBER_RELATIVE_OID);
         } else if (tag == BER.CONTEXT(1)) {
             l.description = seq.readString(BER.EMBER_STRING);
         }
@@ -982,12 +1025,12 @@ Label.prototype.encode = function(ber) {
     ber.startSequence(BER.APPLICATION(18));
     if (this.basePath !== undefined) {
         ber.startSequence(BER.CONTEXT(0));
-        ber.writeOID(this.basePath, BER.EMBER_RELATIVE_OID);
+        ber.writeRelativeOID(this.basePath, BER.EMBER_RELATIVE_OID);
         ber.endSequence();
     }
     if (this.description !== undefined) {
         ber.startSequence(BER.CONTEXT(1));
-        ber.writeString(this.basePath);
+        ber.writeString(this.description, BER.EMBER_STRING);
         ber.endSequence();
     }
     ber.endSequence();
@@ -1084,7 +1127,7 @@ QualifiedMatrix.decode = function(ber) {
         var tag = ber.peek();
         var seq = ber.getSequence(tag);
         if(tag == BER.CONTEXT(0)) {
-            qm.path = seq.readOID(BER.EMBER_RELATIVE_OID); // 13 => relative OID
+            qm.path = seq.readRelativeOID(BER.EMBER_RELATIVE_OID); // 13 => relative OID
         }
         else if(tag == BER.CONTEXT(1)) {
             qm.contents = MatrixContents.decode(seq);
@@ -1100,11 +1143,14 @@ QualifiedMatrix.decode = function(ber) {
         } else if (tag == BER.CONTEXT(4)) {
             qm.sources = decodeSources(seq);
         } else if (tag == BER.CONTEXT(5)) {
-            qm.connections = [];
+            qm.connections = {};
             seq = seq.getSequence(BER.EMBER_SEQUENCE);
             while(seq.remain > 0) {
                 var conSeq = seq.getSequence(BER.CONTEXT(0));
-                qm.connections.push(MatrixConnection.decode(conSeq));
+                var con = MatrixConnection.decode(conSeq);
+                if (con.target !== undefined) {
+                    qm.connections[con.target] = con;
+                }
             }
         }
         else {
@@ -1150,12 +1196,24 @@ QualifiedMatrix.prototype.getDirectory = function(callback) {
     return r;
 }
 
+QualifiedMatrix.prototype.connect = function(connections) {
+    if (this.path === undefined) {
+        throw new Error("Invalid path");
+    }
+    //console.log("Generating getDirectory command for node", this);
+    var r = new Root();
+    var qn = new QualifiedMatrix();
+    qn.path = this.path;
+    r.addElement(qn);
+    qn.connections = connections;
+    return r;
+}
 
 QualifiedMatrix.prototype.encode = function(ber) {
     ber.startSequence(BER.APPLICATION(17));
 
     ber.startSequence(BER.CONTEXT(0));
-    ber.writeOID(this.path, BER.EMBER_RELATIVE_OID);
+    ber.writeRelativeOID(this.path, BER.EMBER_RELATIVE_OID);
     ber.endSequence(); // BER.CONTEXT(0)
 
     if(this.contents !== undefined) {
@@ -1210,11 +1268,13 @@ QualifiedMatrix.prototype.encode = function(ber) {
 
     if (this.connections !== undefined) {
         ber.startSequence(BER.CONTEXT(5));
-        for(var i=0; i<this.sources.length; i++) {
+        ber.startSequence(BER.EMBER_SEQUENCE);
+        for(var id in  this.connections) {
             ber.startSequence(BER.CONTEXT(0));
-            this.connections[i].encode(ber);
+            this.connections[id].encode(ber);
             ber.endSequence();
         }
+        ber.endSequence();
         ber.endSequence();
     }
 
@@ -1291,7 +1351,7 @@ FunctionContent.decode = function(ber) {
                 }
             }
         } else if(tag == BER.CONTEXT(4)) {
-            fc.templateReference = seq.readOID(BER.EMBER_RELATIVE_OID);
+            fc.templateReference = seq.readRelativeOID(BER.EMBER_RELATIVE_OID);
         } else {
             throw new errors.UnimplementedEmberTypeError(tag);
         }
@@ -1365,7 +1425,7 @@ QualifiedFunction.decode = function(ber) {
         var tag = ber.peek();
         var seq = ber.getSequence(tag);
         if(tag == BER.CONTEXT(0)) {
-            qf.path = seq.readOID(BER.EMBER_RELATIVE_OID); // 13 => relative OID
+            qf.path = seq.readRelativeOID(BER.EMBER_RELATIVE_OID); // 13 => relative OID
         }
         else if(tag == BER.CONTEXT(1)) {
             qf.contents = FunctionContent.decode(seq);
@@ -1416,7 +1476,7 @@ QualifiedFunction.prototype.encode = function(ber) {
     ber.startSequence(BER.APPLICATION(20));
 
     ber.startSequence(BER.CONTEXT(0));
-    ber.writeOID(this.path, BER.EMBER_RELATIVE_OID);
+    ber.writeRelativeOID(this.path, BER.EMBER_RELATIVE_OID);
     ber.endSequence(); // BER.CONTEXT(0)
 
     if(this.contents !== undefined) {
@@ -1577,7 +1637,7 @@ QualifiedParameter.decode = function(ber) {
         var tag = ber.peek();
         var seq = ber.getSequence(tag);
         if(tag == BER.CONTEXT(0)) {
-            qp.path = seq.readOID(BER.EMBER_RELATIVE_OID); // 13 => relative OID
+            qp.path = seq.readRelativeOID(BER.EMBER_RELATIVE_OID); // 13 => relative OID
             //console.log("Decoded path",qp.path);
         }
         else if(tag == BER.CONTEXT(1)) {
@@ -1604,7 +1664,7 @@ QualifiedParameter.prototype.encode = function(ber) {
     ber.startSequence(BER.APPLICATION(9));
 
     ber.startSequence(BER.CONTEXT(0));
-    ber.writeOID(this.path, BER.EMBER_RELATIVE_OID);
+    ber.writeRelativeOID(this.path, BER.EMBER_RELATIVE_OID);
     ber.endSequence(); // BER.CONTEXT(0)
 
     if(this.contents !== undefined) {

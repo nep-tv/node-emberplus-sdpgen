@@ -31,6 +31,9 @@ function S101Client(socket, server) {
     self.server = server;
     self.socket = socket;
 
+    self.pendingRequests = [];
+    self.activeRequest = null;
+
     self.status = "connected";
 
     self.codec.on('keepaliveReq', () => {
@@ -103,6 +106,7 @@ S101Server.prototype.listen = function() {
 
     self.server.on("listening", () => {
         self.emit("listening");
+        self.status = "listening";
     });
  
     self.server.listen(self.port, self.address);
@@ -119,6 +123,25 @@ S101Server.prototype.addClient = function(socket) {
  * Client
  *****************************************************/
 
+S101Client.prototype.queueMessage = function(node) {
+    const self = this;
+    this.addRequest(() => {
+        self.sendBERNode(node);
+    });
+}
+
+S101Client.prototype.makeRequest = function() {
+    if(this.activeRequest === null && this.pendingRequests.length > 0) {
+        this.activeRequest = this.pendingRequests.shift();
+        this.activeRequest();
+        this.activeRequest = null;
+    }
+};
+
+S101Client.prototype.addRequest = function(cb) {
+    this.pendingRequests.push(cb);
+    this.makeRequest();
+}
 
 
 /*****************************************************
@@ -132,7 +155,6 @@ S101Socket.prototype.connect = function(timeout = 2) {
     }
 
     self.emit('connecting');
-    //console.log("socket connecting");
 
     if (timeout > 0) {
         self._timeout = timeout;

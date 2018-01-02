@@ -56,6 +56,12 @@ DecodeBuffer = function(packet) {
      return ember.Root.decode(ber);
 }
 
+DeviceTree.prototype.saveTree = function(f) {
+    var writer = new BER.Writer();
+    this.root.encode(writer);
+    f(writer.buffer);
+}
+
 DeviceTree.prototype.connect = function(timeout = 2) {
     return new Promise((resolve, reject) => {
         this.callback = (e) => {

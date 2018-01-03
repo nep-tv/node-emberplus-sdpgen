@@ -173,7 +173,7 @@ DeviceTree.prototype.handleRoot = function(root) {
     var callbacks = self.root.update(root);
     if(root.elements !== undefined) {
         for(var i=0; i<root.elements.length; i++) {
-            if (root.elements[i].path !== undefined) {
+            if (root.elements[i].isQualified()) {
                 callbacks = callbacks.concat(this.handleQualifiedNode(this.root, root.elements[i]));
             }
             else {
@@ -199,24 +199,32 @@ DeviceTree.prototype.handleQualifiedNode = function(parent, node) {
         callbacks = element.update(node);
     }
     else {
+        //console.log("new element", JSON.stringify(node));
         var path = node.path.split(".");
-        path.pop();
-        if ((path.length !== 1) || (parent != this.root) || (path[0] != 0)) {
-            parent = parent.getElementByPath(path.join("."));
+        if (path.length === 1) {
+            this.root.addChild(node);
+        }
+        else {
+            // Let's try to get the parent
+            path.pop();
+            parent = this.root.getElementByPath(path.join("."));
             if (parent === null) {
-                //console.log("Invalid QualifiedNode : path not found");
                 return callbacks;
             }
+            parent.addChild(node);
         }
-        parent.addChild(node);
         element = node;
     }
-
 
     var children = node.getChildren();
     if(children !== null) {
         for(var i=0; i<children.length; i++) {
-            callbacks = callbacks.concat(this.handleNode(element, children[i]));
+            if (children[i].isQualified()) {
+                callbacks = callbacks.concat(this.handleQualifiedNode(element, children[i]));
+            }
+            else {
+                callbacks = callbacks.concat(this.handleNode(element, children[i]));
+            }
         }
     }
 

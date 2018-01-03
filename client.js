@@ -195,8 +195,9 @@ S101Socket.prototype.connect = function(timeout = 2) {
         });
 
         self.emit('connected');
+    }).on('error', (e) => {
+        self.emit("error", e);
     });
-
 
     self.socket.on('data', (data) => {
         self.codec.dataIn(data);
@@ -208,9 +209,7 @@ S101Socket.prototype.connect = function(timeout = 2) {
         self.socket = null;
     });
 
-    self.socket.on('error', (e) => {
-        self.emit("error", e);
-    });
+
 }
 
 S101Socket.prototype.disconnect = function() {

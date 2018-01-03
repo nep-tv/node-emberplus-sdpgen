@@ -34,10 +34,10 @@ function DeviceTree(host, port) {
     });
 
     self.client.on("error", (e) => {
-        self.emit("error", e);
         if (self.callback !== undefined) {
             self.callback(e);
         }
+        self.emit("error", e);
     });
 
     self.client.on('emberTree', (root) => {

@@ -160,7 +160,12 @@ TreeNode.prototype.cancelCallbacks = function() {
 }
 
 TreeNode.prototype.getMinimal = function() {
-    return new this.constructor(this.number);
+    if (this.isQualified()) {
+        return new this.constructor(this.path);
+    }
+    else {
+        return new this.constructor(this.number);
+    }
 }
 
 TreeNode.prototype.getTreeBranch = function(child, modifier) {
@@ -175,7 +180,8 @@ TreeNode.prototype.getTreeBranch = function(child, modifier) {
 
     if(this._parent === null) {
         return m;
-    } else {
+    }
+    else {
         var p = this._parent.getTreeBranch(m);
         return p;
     }

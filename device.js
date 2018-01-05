@@ -1,22 +1,23 @@
 const EventEmitter = require('events').EventEmitter;
 const util = require('util');
-const Promise = require('bluebird');
 const S101Client = require('./client.js').S101Socket;
 const ember = require('./ember.js');
 const BER = require('./ber.js');
 const errors = require('./errors.js');
 
+const DEBUG = false;
 
 function DeviceTree(host, port) {
     DeviceTree.super_.call(this);
     var self = this;
-    self.timeoutValue = 2000;
+    self.timeoutValue = 3000;
     self.client = new S101Client(host, port);
     self.root = new ember.Root();
     self.pendingRequests = [];
     self.activeRequest = null;
     self.timeout = null;
     self.callback = undefined;
+    self.requestID = 0;
 
     self.client.on('connecting', () => {
         self.emit('connecting');
@@ -77,20 +78,24 @@ DeviceTree.prototype.connect = function(timeout = 2) {
 DeviceTree.prototype.expand = function(node)
 {
     let self = this;
-    return new Promise((resolve, reject) => {
-        //console.log("Getting directory for node", node);
-        self.getDirectory(node).then((res) => {
-            if ((res === undefined) || (node.children === undefined)) {
-                //console.log("No more children for ", node);
-                return resolve();
-            }
-            let p = [];
-            for(let child of node.children) {
-                //console.log("Expanding child", child);
-                p.push(self.expand(child));
-            }
-            return Promise.all(p)
-        }).then(() => {resolve();});
+    return self.getDirectory(node).then((res) => {
+        let children = node.getChildren();
+        if ((res === undefined) || (children === undefined) || (children === null)) {
+            if (DEBUG) {console.log("No more children for ", node);}
+            return;
+        }
+        let p = [];
+        for (let child of children) {
+            if (DEBUG) {console.log("Expanding child", child);}
+            p.push(
+                self.expand(child).catch((e) => {
+                    // We had an error on some expansion
+                    // let's save it on the child itself
+                    child.error = e;
+                })
+            );
+        }
+        return Promise.all(p);
     });
 }
 
@@ -103,23 +108,24 @@ DeviceTree.prototype.getDirectory = function(qnode) {
     return new Promise((resolve, reject) => {
         self.addRequest((error) => {
             if (error) {
-                self.finishRequest();
                 reject(error);
+                self.finishRequest();
                 return;
             }
 
             let cb = (error, node) => {
-                self.finishRequest();
+                self.clearTimeout(); // clear the timeout now. The resolve below may take a while.
                 if (error) {
                     reject(error);
                 }
                 else {
-                    //console.log("Received getDirectory response", node);
-                    resolve(node);
+                    if (DEBUG) {console.log("Received getDirectory response", node);}
+                    resolve(node); // make sure the info is treated before going to next request.
                 }
+                self.finishRequest();
             };
 
-            //console.log("Sending getDirectory");
+            if (DEBUG) {console.log("Sending getDirectory", qnode);}
             self.callback = cb;
             self.client.sendBERNode(qnode.getDirectory());
         });
@@ -135,10 +141,14 @@ DeviceTree.prototype.makeRequest = function() {
     if(self.activeRequest === null && self.pendingRequests.length > 0) {
         self.activeRequest = self.pendingRequests.shift();
 
-        self.timeout = setTimeout(() => {
-            self.timeoutRequest();
-        }, self.timeoutValue);
+        const t = function(id) {
+            if (DEBUG) {console.log(`Making request ${id}`,Date.now());}
+            self.timeout = setTimeout(() => {
+                self.timeoutRequest(id);
+            }, self.timeoutValue);
+        };
 
+        t(self.requestID++);
         self.activeRequest();
     }
 };
@@ -149,21 +159,25 @@ DeviceTree.prototype.addRequest = function(cb) {
     self.makeRequest();
 }
 
+DeviceTree.prototype.clearTimeout = function() {
+    if(this.timeout != null) {
+        clearTimeout(this.timeout);
+        this.timeout = null;
+    }
+}
+
 DeviceTree.prototype.finishRequest = function() {
     var self=this;
     self.callback = undefined;
-    if(self.timeout != null) {
-        clearTimeout(self.timeout);
-        self.timeout = null;
-    }
+    self.clearTimeout();
     self.activeRequest = null;
     self.makeRequest();
 }
 
-DeviceTree.prototype.timeoutRequest = function() {
+DeviceTree.prototype.timeoutRequest = function(id) {
     var self = this;
     self.root.cancelCallbacks();
-    self.activeRequest(new errors.EmberTimeoutError('Request timed out'));
+    self.activeRequest(new errors.EmberTimeoutError(`Request ${id !== undefined ? id : ""} timed out`));
 }
 
 DeviceTree.prototype.handleRoot = function(root) {
@@ -303,12 +317,13 @@ DeviceTree.prototype.setValue = function(node, value) {
             //console.log('setValue', node.getPath(), value);
             self.addRequest((error) => {
                 if(error) {
-                    reject(error);
                     self.finishRequest();
+                    reject(error);
                     return;
                 }
 
                 let cb = (error, node) => {
+                    //console.log('setValue complete...', node.getPath(), value);
                     self.finishRequest();
                     if (error) {
                         reject(error);
@@ -319,6 +334,7 @@ DeviceTree.prototype.setValue = function(node, value) {
                 };
 
                 self.callback = cb;
+                //console.log('setValue sending ...', node.getPath(), value);
                 self.client.sendBERNode(node.setValue(value));
             });
         }

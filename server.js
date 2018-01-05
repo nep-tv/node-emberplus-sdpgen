@@ -111,7 +111,7 @@ TreeServer.prototype.handleQualifiedNode = function(client, node) {
 TreeServer.prototype.handleNode = function(client, node) {
     // traverse the tree
     let element = node;
-    let path = [0];
+    let path = [];
     while(element !== undefined) {
         if (element.number === undefined) {
             this.emit("error", "invalid request");
@@ -290,20 +290,19 @@ TreeServer.prototype.unsubscribe = function(client, element) {
 }
 
 TreeServer.prototype.setValue = function(element, value, origin) {
+    return new Promise((resolve, reject) => {
+        // Change the element value if write access permitted.
+        if ((element.contents !== undefined) &&
+            (element.contents.access !== undefined) &&
+            (element.contents.access.value > 1)) {
+            element.contents.value = value;
+            this.emit("value-change", element);
+        }
 
-    // Change the element value if write access permitted.
-    if ((element.contents !== undefined) &&
-        (element.contents.access !== undefined) &&
-        (element.contents.access.value > 1)) {
-        element.contents.value = value;
-        this.emit("value-change", element);
-    }
-
-    // Get the element branch to be returned and send response
-    let res = this.handleGetDirectory(origin, element);
-    // Update the subscribers
-    this.updateSubscribers(element.getPath(), res, origin);
-    return res;
+        let res = this.handleGetDirectory(origin, element);
+        // Update the subscribers
+        this.updateSubscribers(element.getPath(), res, origin);
+    });
 }
 
 TreeServer.prototype.updateSubscribers = function(path, response, origin) {

@@ -170,9 +170,9 @@ TreeServer.prototype.handleQualifiedParameter = function(client, element, parame
 }
 
 
-TreeServer.prototype.handleMatrixConnections = function(client, matrix, connections) {
+TreeServer.prototype.handleMatrixConnections = function(client, matrix, connections, response = true) {
     var res;
-    var root;
+    var root; // ember message root
     if (matrix.isQualified()) {
         root = new ember.Root();
         res = new ember.QualifiedMatrix(matrix.path);
@@ -187,59 +187,81 @@ TreeServer.prototype.handleMatrixConnections = function(client, matrix, connecti
         let connection = connections[target];
         var conResult = new ember.MatrixConnection(connection.target);
         res.connections[connection.target] = conResult;
-        if ((connection.operation === undefined) ||
-            (connection.operation.value == ember.MatrixOperation.absolute)) {
-            conResult.sources = connection.sources;
-            this.emit("matrix-change", {target: target, sources: connection.sources});
-        }
-        else if (connection.operation == ember.MatrixOperation.connect) {
-            if ((connection.sources == undefined) ||(connection.sources.length < 1)) {
-                conResult.sources = matrix.connections[connection.target].sources;
-                continue;
-            }
-            let sources = matrix.connections[connection.target].sources;
-            if (sources === undefined) {
-                sources = [];
-            }
-            var j = 0;
-            var newSources = [];
-            for(var i = 0; i < sources.length; i++) {
-                while((j < connection.sources.length) &&
-                (connection.sources[j] < sources[i]))
-                {
-                    newSources.push(connection.sources[j++]);
-                }
-                newSources.push(sources[i]);
-            }
-            while(j < connection.sources.length) {
-                newSources.push(connection.sources[j++]);
-            }
-            conResult.sources = newSources;
-            this.emit("matrix-connect", {target: target, sources: connection.sources});
-        }
-        else { // Disconnect
-            let sources = matrix.connections[connection.target].sources;
-            if (sources === undefined) {
-                sources = [];
-            }
-            var j = 0;
-            var newSources = [];
 
-            for(var i = 0; i < sources.length; i++) {
-                if ((j < connection.sources.length) && (sources[i] == connection.sources[j])) {
-                    j++;
-                    continue;
-                }
-                newSources.push(sources[i]);
-            }
-            conResult.sources = newSources;
-            this.emit("matrix-disconnect", {target: target, sources: connection.sources});
+        if (connection.sources === undefined) {
+            conResult.sources = matrix.connections[connection.target].sources;
+            continue;
         }
-        matrix.connections[target].sources = conResult.sources;
-        conResult.disposition = ember.MatrixDisposition.modified;
+        else {
+            if ((connection.operation === undefined) ||
+                (connection.operation.value == ember.MatrixOperation.absolute)) {
+                matrix.connections[connection.target].setSources(connection.sources);
+                this.emit("matrix-change", {target: target, sources: connection.sources});
+            }
+            else if (connection.operation == ember.MatrixOperation.connect) {
+                matrix.connections[connection.target].connectSources(connection.sources);
+                conResult.sources = matrix.connections[connection.target].sources;
+                this.emit("matrix-connect", {target: target, sources: connection.sources});
+            }
+            else { // Disconnect
+                matrix.connections[connection.target].disconnectSources(connection.sources);
+                conResult.sources = matrix.connections[connection.target].sources;
+                this.emit("matrix-disconnect", {target: target, sources: connection.sources});
+            }
+            if (response) {
+                conResult.sources = matrix.connections[connection.target].sources;
+                conResult.disposition = ember.MatrixDisposition.modified;
+            }
+            else {
+                conResult.operation = connection.operation;
+            }
+        }
     }
-    client.sendBERNode(root);
+    if (client !== undefined) {
+        client.sendBERNode(root);
+    }
     this.updateSubscribers(matrix.getPath(), root, client);
+}
+
+const validateMatrixOperation = function(matrix, target, sources) {
+    if (matrix === undefined) {
+        throw new Error(`matrix not found with path ${path}`);
+    }
+    if (matrix.contents === undefined) {
+        throw new Error(`invalid matrix at ${path} : no contents`);
+    }
+    if (matrix.contents.targetCount === undefined) {
+        throw new Error(`invalid matrix at ${path} : no targetCount`);
+    }
+    if ((target < 0) || (target >= matrix.contents.targetCount)) {
+        throw new Error(`invalid target id at ${target}`);
+    }
+    if (sources.length === undefined) {
+        throw new Error("invalid sources format");
+    }
+}
+
+const doMatrixOperation = function(server, path, target, sources, operation) {
+    let matrix = server.tree.getElementByPath(path);
+
+    validateMatrixOperation(matrix, target, sources);
+
+    let connections = new ember.MatrixConnection(target);
+    connections.sources = sources;
+    connections.operation = operation;
+    server.handleMatrixConnections(undefined, matrix, connections, false);
+}
+
+TreeServer.prototype.matrixConnect = function(path, target, sources) {
+    doMatrixOperation(this, path, target, sources, ember.MatrixOperation.connect);
+}
+
+TreeServer.prototype.matrixDisConnect = function(path, target, sources) {
+    doMatrixOperation(this, path, target, sources, ember.MatrixOperation.disconnect);
+}
+
+TreeServer.prototype.matrixSet = function(path, target, sources) {
+    doMatrixOperation(this, path, target, sources, ember.MatrixOperation.absolute);
 }
 
 TreeServer.prototype.handleCommand = function(client, element, cmd) {
@@ -324,5 +346,60 @@ TreeServer.prototype.updateSubscribers = function(path, response, origin) {
     }
 }
 
+const parseObj = function(parent, obj, isQualified) {
+    let path = parent.getPath();
+    for(let number = 0; number < obj.length; number++) {
+        let emberElement;
+        let content = obj[number];
+        //console.log(`parsing obj at number ${number}`, content);
+        if (content.value !== undefined) {
+            //console.log("new parameter");
+            // this is a parameter
+            if (isQualified) {
+                emberElement = new ember.QualifiedParameter(`${path}${path !== "" ? "." : ""}${number}`);
+            }
+            else {
+                emberElement = new ember.Parameter(number);
+            }
+            emberElement.contents = new ember.ParameterContents(content.value);
+        }
+        else if (content.targetCount !== undefined) {
+            //console.log("new matrix");
+            if (isQualified) {
+                emberElement = new ember.QualifiedMatrix(`${path}${path !== "" ? "." : ""}${number}`);
+            }
+            else {
+                emberElement = new ember.MatrixNode(number);
+            }
+            emberElement.contents = new ember.MatrixContents();
+        }
+        else {
+            //console.log("new node");
+            if (isQualified) {
+                emberElement = new ember.QualifiedNode(`${path}${path !== "" ? "." : ""}${number}`);
+            }
+            else {
+                emberElement = new ember.Node(number);
+            }
+            emberElement.contents = new ember.NodeContents();
+        }
+        for(let id in content) {
+            if ((id !== "children") && (content.hasOwnProperty(id))) {
+                //console.log(`adding contents ${id}`);
+                emberElement.contents[id] = content[id];
+            }
+            else {
+                parseObj(emberElement, content.children, isQualified);
+            }
+        }
+        parent.addChild(emberElement);
+    }
+}
+
+TreeServer.JSONtoTree = function(obj, isQualified = true) {
+    let tree = new ember.Root();
+    parseObj(tree, obj, isQualified);
+    return tree;
+}
 
 module.exports = TreeServer;

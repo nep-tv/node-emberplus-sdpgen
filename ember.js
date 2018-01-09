@@ -950,6 +950,34 @@ var MatrixDisposition = new Enum({
 module.exports.MatrixOperation = MatrixOperation;
 module.exports.MatrixDisposition = MatrixDisposition;
 
+MatrixConnection.prototype.setSources = function(sources) {
+    if (sources === undefined) {
+        return;
+    }
+    this.sources = sources; // sources should be an array
+}
+
+MatrixConnection.prototype.connectSources = function(sources) {
+    if (sources === undefined) {
+        return;
+    }
+    let s = new Set(this.sources);
+    for(let item of sources) {
+        s.add(item);
+    }
+    this.sources = [...s].sort();
+}
+
+MatrixConnection.prototype.disconnectSources = function(sources) {
+    if (sources === undefined) {
+        return;
+    }
+    let s = new Set(this.sources);
+    for(let item of sources) {
+        s.delete(item);
+    }
+    this.sources = [...s].sort();
+}
 
 MatrixConnection.decode = function(ber) {
     var c = new MatrixConnection();

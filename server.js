@@ -256,7 +256,7 @@ TreeServer.prototype.matrixConnect = function(path, target, sources) {
     doMatrixOperation(this, path, target, sources, ember.MatrixOperation.connect);
 }
 
-TreeServer.prototype.matrixDisConnect = function(path, target, sources) {
+TreeServer.prototype.matrixDisconnect = function(path, target, sources) {
     doMatrixOperation(this, path, target, sources, ember.MatrixOperation.disconnect);
 }
 
@@ -348,9 +348,11 @@ TreeServer.prototype.updateSubscribers = function(path, response, origin) {
 
 const parseObj = function(parent, obj, isQualified) {
     let path = parent.getPath();
-    for(let number = 0; number < obj.length; number++) {
+    for(let i = 0; i < obj.length; i++) {
         let emberElement;
-        let content = obj[number];
+        let content = obj[i];
+        let number = content.number !== undefined ? content.number : i;
+        delete content.number;
         //console.log(`parsing obj at number ${number}`, content);
         if (content.value !== undefined) {
             //console.log("new parameter");
@@ -362,6 +364,20 @@ const parseObj = function(parent, obj, isQualified) {
                 emberElement = new ember.Parameter(number);
             }
             emberElement.contents = new ember.ParameterContents(content.value);
+            if (content.type) {
+                emberElement.contents.type = ember.ParameterType.get(content.type);
+                delete content.type;
+            }
+            else {
+                emberElement.contents.type = ember.ParameterType.string;
+            }
+            if (content.access) {
+                emberElement.contents.access = ember.ParameterAccess.get(content.access);
+                delete content.access;
+            }
+            else {
+                emberElement.contents.access = ember.ParameterAccess.read;
+            }
         }
         else if (content.targetCount !== undefined) {
             //console.log("new matrix");
@@ -372,6 +388,16 @@ const parseObj = function(parent, obj, isQualified) {
                 emberElement = new ember.MatrixNode(number);
             }
             emberElement.contents = new ember.MatrixContents();
+
+            if (content.labels) {
+                emberElement.contents.labels = [];
+                for(let l = 0; l < content.labels.length; l++) {
+                    emberElement.contents.labels.push(
+                        new ember.Label(content.labels[l])
+                    );
+                }
+                delete content.labels;
+            }
         }
         else {
             //console.log("new node");

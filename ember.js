@@ -743,6 +743,8 @@ util.inherits(MatrixNode, TreeNode);
 module.exports.MatrixNode = MatrixNode;
 
 function MatrixContents() {
+    this.type = MatrixType.oneToOne;
+    this.mode = MatrixMode.linear;
 }
 
 MatrixContents.decode = function(ber) {
@@ -762,9 +764,9 @@ MatrixContents.decode = function(ber) {
         } else if(tag == BER.CONTEXT(1)) {
             mc.description = seq.readString(BER.EMBER_STRING);
         } else if(tag == BER.CONTEXT(2)) {
-            mc.type = MatrixType.decode(seq);
+            mc.type = MatrixType.get(seq.readInt());
         } else if(tag == BER.CONTEXT(3)) {
-            mc.mode = MatrixMode.decode(seq);
+            mc.mode = MatrixMode.get(seq.readInt());
         } else if(tag == BER.CONTEXT(4)) {
             mc.targetCount = seq.readInt();
         } else if(tag == BER.CONTEXT(5)) {
@@ -813,12 +815,12 @@ MatrixContents.prototype.encode = function(ber) {
     }
     if (this.type !== undefined) {
         ber.startSequence(BER.CONTEXT(2));
-        this.type.encode(ber);
+        ber.writeInt(this.type.value);
         ber.endSequence();
     }
     if (this.mode !== undefined) {
         ber.startSequence(BER.CONTEXT(3));
-        this.mode.encode(ber);
+        ber.writeInt(this.mode.value);
         ber.endSequence();
     }
     if (this.targetCount !== undefined) {
@@ -1032,7 +1034,10 @@ MatrixConnection.prototype.encode = function(ber) {
 
 module.exports.MatrixConnection = MatrixConnection;
 
-function Label() {
+function Label(path) {
+    if (path) {
+        this.basePath = path;
+    }
 }
 
 Label.decode = function(ber) {
@@ -1084,58 +1089,23 @@ ParametersLocation.decode = function(ber) {
 
 module.exports.ParametersLocation = ParametersLocation;
 
-function MatrixType() {
-    this.value = "oneToN";
-}
 
-MatrixType.decode = function(ber) {
-    var mt = new MatrixType();
-    var type = ber.readInt();
 
-    if (type === 1) {
-        mt.value = "oneToOne";
-    } else if (type === 2) {
-        mt.value = "nToN";
-    }
-    return mt;
-}
+var MatrixType = new Enum({
+    oneToN: 0,
+    oneToOne: 1,
+    nToN: 2
+});
 
-MatrixType.prototype.encode = function(ber) {
-    if (this.type === "oneToOne") {
-        ber.writeInt(1);
-    }
-    else if (this.type === "nToN") {
-        ber.writeInt(2);
-    }
-    else {
-        ber.writeInt(0);
-    }
-}
 
 module.exports.MatrixType = MatrixType;
 
-function MatrixMode() {
-    this.value = "linear";
-}
 
-MatrixMode.decode = function(ber) {
-    var mt = new MatrixMode();
-    var mode = ber.readInt();
+var MatrixMode = new Enum({
+    linear: 0,
+    nonLinear: 1
+});
 
-    if (mode === 1) {
-        mt.value = "nonLinear";
-    }
-    return mt;
-}
-
-MatrixMode.prototype.encode = function(ber) {
-    if (this.type === "nonLinear") {
-        ber.writeInt(1);
-    }
-    else {
-        ber.writeInt(0);
-    }
-}
 
 module.exports.MatrixMode = MatrixMode;
 

@@ -27,17 +27,24 @@ function TreeServer(host, port, tree) {
         client.on("emberTree", (root) => {
             // Queue the action to make sure responses are sent in order.
             client.addRequest(() => {
-                self.handleRoot(client, root);
+                try {
+                    let path = self.handleRoot(client, root);
+                    self.emit("request", {client: client.remoteAddress(), root: root, path: path});
+                }
+                catch(e) {
+                    self.emit("error", e);
+                }
             });
         });
         client.on("disconnected", () => {
             self.clients.delete(client);
+            self.emit('disconnect', client.remoteAddress());
         });
-        self.emit('connection', client);
+        self.emit('connection', client.remoteAddress());
     });
 
     self.server.on('disconnected', () => {
-        self.emit('disconnected');
+        self.emit('disconnected', client.remoteAddress());
     });
 
     self.server.on("error", (e) => {
@@ -72,14 +79,15 @@ TreeServer.prototype.handleRoot = function(client, root) {
 
     const node = root.elements[0];
     if (node.path !== undefined) {
-        this.handleQualifiedNode(client, node);
+        return this.handleQualifiedNode(client, node);
     }
     else if (node instanceof ember.Command) {
         // Command on root element
         this.handleCommand(client, this.tree, node.number);
+        return "root";
     }
     else {
-        this.handleNode(client, node);
+        return this.handleNode(client, node);
     }
 }
 
@@ -105,6 +113,7 @@ TreeServer.prototype.handleQualifiedNode = function(client, node) {
             this.handleQualifiedParameter(client, element, node);
         }
     }
+    return path;
 }
 
 
@@ -155,6 +164,7 @@ TreeServer.prototype.handleNode = function(client, node) {
     else {
         this.emit("error", new Error(`invalid request format`));
     }
+    return path;
 }
 
 TreeServer.prototype.handleQualifiedMatrix = function(client, element, matrix)
@@ -183,44 +193,57 @@ TreeServer.prototype.handleMatrixConnections = function(client, matrix, connecti
         root = matrix._parent.getTreeBranch(res);
     }
     res.connections = {};
-    for(let target in connections) {
-        let connection = connections[target];
-        var conResult = new ember.MatrixConnection(connection.target);
-        res.connections[connection.target] = conResult;
-
-        if (connection.sources === undefined) {
-            conResult.sources = matrix.connections[connection.target].sources;
+    for(let id in connections) {
+        if (!connections.hasOwnProperty(id)) {
             continue;
         }
+        let connection = connections[id];
+        let conResult = new ember.MatrixConnection(connection.target);
+        let emitType;
+        res.connections[connection.target] = conResult;
+
+
+        // Apply changes
+
+        if ((connection.operation === undefined) ||
+            (connection.operation.value == ember.MatrixOperation.absolute)) {
+            matrix.connections[connection.target].setSources(connection.sources);
+            emitType = "matrix-change";
+        }
+        else if (connection.operation == ember.MatrixOperation.connect) {
+            matrix.connections[connection.target].connectSources(connection.sources);
+            emitType = "matrix-connect";
+        }
+        else { // Disconnect
+            matrix.connections[connection.target].disconnectSources(connection.sources);
+            emitType = "matrix-disconnect";
+        }
+
+        // Send response or update subscribers.
+
+        if (response) {
+            conResult.sources = matrix.connections[connection.target].sources;
+            conResult.disposition = ember.MatrixDisposition.modified;
+            // We got a request so emit something.
+            this.emit(emitType, {
+                target: connection.target,
+                sources: connection.sources,
+                client: client.remoteAddress()
+            });
+        }
         else {
-            if ((connection.operation === undefined) ||
-                (connection.operation.value == ember.MatrixOperation.absolute)) {
-                matrix.connections[connection.target].setSources(connection.sources);
-                this.emit("matrix-change", {target: target, sources: connection.sources});
-            }
-            else if (connection.operation == ember.MatrixOperation.connect) {
-                matrix.connections[connection.target].connectSources(connection.sources);
-                conResult.sources = matrix.connections[connection.target].sources;
-                this.emit("matrix-connect", {target: target, sources: connection.sources});
-            }
-            else { // Disconnect
-                matrix.connections[connection.target].disconnectSources(connection.sources);
-                conResult.sources = matrix.connections[connection.target].sources;
-                this.emit("matrix-disconnect", {target: target, sources: connection.sources});
-            }
-            if (response) {
-                conResult.sources = matrix.connections[connection.target].sources;
-                conResult.disposition = ember.MatrixDisposition.modified;
-            }
-            else {
-                conResult.operation = connection.operation;
-            }
+            // the action has been applied.  So we should either send the current state (absolute)
+            // or send the action itself (connection.sources)
+            conResult.sources = matrix.connections[connection.target].sources;
+            conResult.operation = ember.MatrixOperation.absolute;
         }
     }
     if (client !== undefined) {
         client.sendBERNode(root);
     }
-    this.updateSubscribers(matrix.getPath(), root, client);
+    else {
+        this.updateSubscribers(matrix.getPath(), root, client);
+    }
 }
 
 const validateMatrixOperation = function(matrix, target, sources) {
@@ -246,10 +269,10 @@ const doMatrixOperation = function(server, path, target, sources, operation) {
 
     validateMatrixOperation(matrix, target, sources);
 
-    let connections = new ember.MatrixConnection(target);
-    connections.sources = sources;
-    connections.operation = operation;
-    server.handleMatrixConnections(undefined, matrix, connections, false);
+    let connection = new ember.MatrixConnection(target);
+    connection.sources = sources;
+    connection.operation = operation;
+    server.handleMatrixConnections(undefined, matrix, [connection], false);
 }
 
 TreeServer.prototype.matrixConnect = function(path, target, sources) {
@@ -282,6 +305,12 @@ TreeServer.prototype.handleCommand = function(client, element, cmd) {
 
 TreeServer.prototype.handleGetDirectory = function(client, element) {
     if (client !== undefined) {
+        if ((element.isMatrix() || element.isParameter()) &&
+            (!element.isStream())) {
+            // ember spec: parameter without streamIdentifier should
+            // report their value changes automatically.
+            this.subscribe(client, element);
+        }
         client.sendBERNode(element);
     }
 }
@@ -397,6 +426,28 @@ const parseObj = function(parent, obj, isQualified) {
                     );
                 }
                 delete content.labels;
+            }
+
+
+            if (content.connections) {
+                emberElement.connections = {};
+                for (let c in content.connections) {
+                    if (! content.connections.hasOwnProperty(c)) {
+                        continue;
+                    }
+                    let t = content.connections[c].target !== undefined ? content.connections[c].target : 0;
+                    let connection = new ember.MatrixConnection(t);
+                    connection.setSources(content.connections[c].sources);
+                    emberElement.connections[t] = connection;
+                }
+                delete content.connections;
+            }
+            else {
+                emberElement.connections = {};
+                for (let t = 0; t < content.targetCount; t++) {
+                    let connection = new ember.MatrixConnection(t);
+                    emberElement.connections[t] = connection;
+                }
             }
         }
         else {

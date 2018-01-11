@@ -142,6 +142,11 @@ TreeNode.prototype.isQualified = function() {
     (this instanceof QualifiedFunction));
 }
 
+TreeNode.prototype.isStream = function() {
+    return this.contents !== undefined &&
+        this.contents.streamDescriptor !== undefined;
+}
+
 TreeNode.prototype.addCallback = function(callback) {
     if(this._callbacks.indexOf(callback) < 0) {
         this._callbacks.push(callback);
@@ -200,6 +205,20 @@ TreeNode.prototype.getDirectory = function(callback) {
         this._directoryCallbacks.push((error, node) => { callback(error, node) });
     }
     return this.getTreeBranch(new Command(COMMAND_GETDIRECTORY));
+}
+
+TreeNode.prototype.subscribe = function(callback) {
+    if(callback !== undefined) {
+        this._directoryCallbacks.push((error, node) => { callback(error, node) });
+    }
+    return this.getTreeBranch(new Command(COMMAND_SUBSCRIBE));
+}
+
+TreeNode.prototype.unsubscribe = function(callback) {
+    if(callback !== undefined) {
+        this._directoryCallbacks.push((error, node) => { callback(error, node) });
+    }
+    return this.getTreeBranch(new Command(COMMAND_UNSUBSCRIBE));
 }
 
 TreeNode.prototype.getChildren = function() {
@@ -476,22 +495,38 @@ QualifiedNode.prototype.update = function(other) {
     return callbacks;
 }
 
-QualifiedNode.prototype.getDirectory = function(callback) {
-    if (this.path === undefined) {
-        throw new Error("Invalid path");
-    }
-    //console.log("Generating getDirectory command for node", this);
+function QualifiedNodeCommand(self, cmd, callback) {
     var r = new Root();
     var qn = new QualifiedNode();
-    qn.path = this.path;
+    qn.path = self.path;
     r.addElement(qn);
-    qn.addChild(new Command(COMMAND_GETDIRECTORY));
+    qn.addChild(new Command(cmd));
     if(callback !== undefined) {
-        this._directoryCallbacks.push((error, node) => { callback(error, node) });
+        self._directoryCallbacks.push((error, node) => { callback(error, node) });
     }
     return r;
 }
 
+QualifiedNode.prototype.getDirectory = function(callback) {
+    if (this.path === undefined) {
+        throw new Error("Invalid path");
+    }
+    return QualifiedNodeCommand(this, COMMAND_GETDIRECTORY, callback)
+}
+
+QualifiedNode.prototype.subscribe = function(callback) {
+    if (this.path === undefined) {
+        throw new Error("Invalid path");
+    }
+    return QualifiedNodeCommand(this, COMMAND_SUBSCRIBE, callback)
+}
+
+QualifiedNode.prototype.unsubscribe = function(callback) {
+    if (this.path === undefined) {
+        throw new Error("Invalid path");
+    }
+    return QualifiedNodeCommand(this, COMMAND_UNSUBSCRIBE, callback)
+}
 
 QualifiedNode.prototype.encode = function(ber) {
     ber.startSequence(BER.APPLICATION(10));
@@ -645,7 +680,7 @@ MatrixNode.decode = function(ber) {
                 var conSeq = seq.getSequence(BER.CONTEXT(0));
                 var con = MatrixConnection.decode(conSeq);
                 if (con.target !== undefined) {
-                    m.connections[con.target] = con;
+                    m.connections[con.target] = (con);
                 }
             }
         }
@@ -721,14 +756,22 @@ MatrixNode.prototype.encode = function(ber) {
     if (this.connections !== undefined) {
         ber.startSequence(BER.CONTEXT(5));
         for(var id in this.connections) {
-            ber.startSequence(BER.CONTEXT(0));
-            this.connections[id].encode(ber);
-            ber.endSequence();
+            if (this.connections.hasOwnProperty(id)) {
+                ber.startSequence(BER.CONTEXT(0));
+                this.connections[id].encode(ber);
+                ber.endSequence();
+            }
         }
         ber.endSequence();
     }
 
     ber.endSequence(); // BER.APPLICATION(3)
+}
+
+MatrixNode.prototype.update = function(other) {
+    callbacks = MatrixNode.super_.prototype.update.apply(this);
+    MatrixUpdate(this, other);
+    return callbacks;
 }
 
 MatrixNode.prototype.connect = function(connections) {
@@ -915,10 +958,13 @@ module.exports.MatrixContents = MatrixContents;
 
 function MatrixConnection(target) {
     if (target) {
+        target = Number(target);
+        if (isNaN(target)) { target = 0; }
         this.target = target;
     }
-
-
+    else {
+        this.target = 0;
+    }
 }
 
 // ConnectionOperation ::=
@@ -954,9 +1000,11 @@ module.exports.MatrixDisposition = MatrixDisposition;
 
 MatrixConnection.prototype.setSources = function(sources) {
     if (sources === undefined) {
+        delete this.sources;
         return;
     }
-    this.sources = sources; // sources should be an array
+    let s = new Set(sources);
+    this.sources = [...s].sort(); // sources should be an array
 }
 
 MatrixConnection.prototype.connectSources = function(sources) {
@@ -1014,7 +1062,7 @@ MatrixConnection.prototype.encode = function(ber) {
     ber.writeInt(this.target);
     ber.endSequence();
 
-    if (this.sources !== undefined) {
+    if ((this.sources !== undefined)&& (this.sources.length > 0)) {
         ber.startSequence(BER.CONTEXT(1));
         ber.writeRelativeOID(this.sources.join("."), BER.EMBER_RELATIVE_OID);
         ber.endSequence();
@@ -1164,47 +1212,74 @@ QualifiedMatrix.decode = function(ber) {
     return qm;
 }
 
-QualifiedMatrix.prototype.update = function(other) {
-    callbacks = QualifiedMatrix.super_.prototype.update.apply(this);
-    if (other !== undefined) {
-        if (other.contents !== undefined) {
-            this.contents = other.contents;
+function MatrixUpdate(matrix, newMatrix) {
+    if (newMatrix !== undefined) {
+        if (newMatrix.contents !== undefined) {
+            matrix.contents = newMatrix.contents;
         }
-        if (other.targets !== undefined) {
-            this.targets = other.targets;
+        if (newMatrix.targets !== undefined) {
+            matrix.targets = newMatrix.targets;
         }
-        if (other.sources !== undefined) {
-            this.sources = other.sources;
+        if (newMatrix.sources !== undefined) {
+            matrix.sources = newMatrix.sources;
         }
-        if (other.connections !== undefined) {
-            this.connections = other.connections;
+        if (newMatrix.connections !== undefined) {
+            for(let id in newMatrix.connections) {
+                if (newMatrix.connections.hasOwnProperty(id)) {
+                    let connection = newMatrix.connections[id];
+                    if ((connection.target < matrix.contents.targetCount) &&
+                        (connection.target >= 0)) {
+                        matrix.connections[connection.target].setSources(connection.sources);
+                    }
+                }
+            }
         }
     }
 
+}
+QualifiedMatrix.prototype.update = function(other) {
+    callbacks = QualifiedMatrix.super_.prototype.update.apply(this);
+    MatrixUpdate(this, other);
     return callbacks;
+}
+
+function QualifiedMatrixCommand(self, cmd, callback) {
+    var r = new Root();
+    var qn = new QualifiedMatrix();
+    qn.path = self.path;
+    r.addElement(qn);
+    qn.addChild(new Command(cmd));
+    if(callback !== undefined) {
+        self._directoryCallbacks.push((error, node) => { callback(error, node) });
+    }
+    return r;
 }
 
 QualifiedMatrix.prototype.getDirectory = function(callback) {
     if (this.path === undefined) {
         throw new Error("Invalid path");
     }
-    //console.log("Generating getDirectory command for node", this);
-    var r = new Root();
-    var qn = new QualifiedMatrix();
-    qn.path = this.path;
-    r.addElement(qn);
-    qn.addChild(new Command(COMMAND_GETDIRECTORY));
-    if(callback !== undefined) {
-        this._directoryCallbacks.push((error, node) => { callback(error, node) });
+    return QualifiedMatrixCommand(this, COMMAND_GETDIRECTORY, callback);
+}
+
+QualifiedMatrix.prototype.subscribe = function(callback) {
+    if (this.path === undefined) {
+        throw new Error("Invalid path");
     }
-    return r;
+    return QualifiedMatrixCommand(this, COMMAND_SUBSCRIBE, callback);
+}
+
+QualifiedMatrix.prototype.unsubscribe = function(callback) {
+    if (this.path === undefined) {
+        throw new Error("Invalid path");
+    }
+    return QualifiedMatrixCommand(this, COMMAND_UNSUBSCRIBE, callback);
 }
 
 QualifiedMatrix.prototype.connect = function(connections) {
     if (this.path === undefined) {
         throw new Error("Invalid path");
     }
-    //console.log("Generating getDirectory command for node", this);
     var r = new Root();
     var qn = new QualifiedMatrix();
     qn.path = this.path;
@@ -1273,10 +1348,12 @@ QualifiedMatrix.prototype.encode = function(ber) {
     if (this.connections !== undefined) {
         ber.startSequence(BER.CONTEXT(5));
         ber.startSequence(BER.EMBER_SEQUENCE);
-        for(var id in  this.connections) {
-            ber.startSequence(BER.CONTEXT(0));
-            this.connections[id].encode(ber);
-            ber.endSequence();
+        for(var id in this.connections) {
+            if (this.connections.hasOwnProperty(id)) {
+                ber.startSequence(BER.CONTEXT(0));
+                this.connections[id].encode(ber);
+                ber.endSequence();
+            }
         }
         ber.endSequence();
         ber.endSequence();
@@ -1459,22 +1536,38 @@ QualifiedFunction.prototype.update = function(other) {
     return callbacks;
 }
 
-QualifiedFunction.prototype.getDirectory = function(callback) {
-    if (this.path === undefined) {
-        throw new Error("Invalid path");
-    }
-    //console.log("Generating getDirectory command for node", this);
+function QualifiedFunctionCommand(self, cmd, callback) {
     var r = new Root();
     var qf = new QualifiedFunction();
-    qf.path = this.path;
+    qf.path = self.path;
     r.addElement(qf);
-    qf.addChild(new Command(COMMAND_GETDIRECTORY));
+    qf.addChild(new Command(cmd));
     if(callback !== undefined) {
-        this._directoryCallbacks.push((error, node) => { callback(error, node) });
+        self._directoryCallbacks.push((error, node) => { callback(error, node) });
     }
     return r;
 }
 
+QualifiedFunction.prototype.getDirectory = function(callback) {
+    if (this.path === undefined) {
+        throw new Error("Invalid path");
+    }
+    return QualifiedFunctionCommand(this, COMMAND_GETDIRECTORY, callback);
+}
+
+QualifiedFunction.prototype.subscribe = function(callback) {
+    if (this.path === undefined) {
+        throw new Error("Invalid path");
+    }
+    return QualifiedFunctionCommand(this, COMMAND_SUBSCRIBE, callback);
+}
+
+QualifiedFunction.prototype.unsubscribe = function(callback) {
+    if (this.path === undefined) {
+        throw new Error("Invalid path");
+    }
+    return QualifiedFunctionCommand(this, COMMAND_UNSUBSCRIBE, callback);
+}
 
 QualifiedFunction.prototype.encode = function(ber) {
     ber.startSequence(BER.APPLICATION(20));
@@ -1700,19 +1793,37 @@ QualifiedParameter.prototype.update = function(other) {
     return callbacks;
 }
 
+function QualifiedParameterCommand(self, cmd, callback) {
+    let r = new Root();
+    let qp = new QualifiedParameter();
+    qp.path = self.path;
+    r.addElement(qp);
+    qp.addChild(new Command(cmd));
+    if(callback !== undefined) {
+        self._directoryCallbacks.push((error, node) => { callback(error, node) });
+    }
+    return r;
+}
+
 QualifiedParameter.prototype.getDirectory = function(callback) {
     if (this.path === undefined) {
         throw new Error("Invalid path");
     }
-    let r = new Root();
-    let qp = new QualifiedParameter();
-    qp.path = this.path;
-    r.addElement(qp);
-    qp.addChild(new Command(COMMAND_GETDIRECTORY));
-    if(callback !== undefined) {
-        this._directoryCallbacks.push((error, node) => { callback(error, node) });
+    return QualifiedParameterCommand(this, COMMAND_GETDIRECTORY, callback);
+}
+
+QualifiedParameter.prototype.subscribe = function(callback) {
+    if (this.path === undefined) {
+        throw new Error("Invalid path");
     }
-    return r;
+    return QualifiedParameterCommand(this, COMMAND_SUBSCRIBE, callback);
+}
+
+QualifiedParameter.prototype.unsubscribe = function(callback) {
+    if (this.path === undefined) {
+        throw new Error("Invalid path");
+    }
+    return QualifiedParameterCommand(this, COMMAND_UNSUBSCRIBE, callback);
 }
 
 QualifiedParameter.prototype.setValue = function(value, callback) {
@@ -1818,10 +1929,6 @@ Parameter.prototype.update = function(other) {
     return callbacks;
 }
 
-Parameter.prototype.isStream = function() {
-    return this.contents !== undefined && 
-        this.contents.streamDescriptor !== undefined;
-}
 
 var ParameterAccess = new Enum({
     none: 0,

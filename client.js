@@ -123,6 +123,13 @@ S101Server.prototype.addClient = function(socket) {
  * Client
  *****************************************************/
 
+S101Client.prototype.remoteAddress = function() {
+    if (this.socket === undefined) {
+        return;
+    }
+    return `${this.socket.remoteAddress}:${this.socket.remotePort}`
+}
+
 S101Client.prototype.queueMessage = function(node) {
     const self = this;
     this.addRequest(() => {

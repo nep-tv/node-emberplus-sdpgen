@@ -303,6 +303,14 @@ DeviceTree.prototype.subscribe = function(node, callback) {
     }
 }
 
+DeviceTree.prototype.unsubscribe = function(node, callback) {
+    if(node instanceof ember.Parameter && node.isStream()) {
+        // TODO: implement
+    } else {
+        node.addCallback(callback);
+    }
+}
+
 DeviceTree.prototype.setValue = function(node, value) {
     var self=this;
     return new Promise((resolve, reject) => {

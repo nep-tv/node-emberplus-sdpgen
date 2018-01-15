@@ -302,8 +302,20 @@ TreeServer.prototype.handleCommand = function(client, element, cmd) {
     }
 }
 
+TreeServer.prototype.getResponse = function(element) {
+    let res = element;
+    if (element.isQualified()) {
+        res = new ember.Root();
+        res.addChild(element);
+    }
+    else if (element._parent) {
+        res = element._parent.getTreeBranch(element);
+    }
+    return res;
+}
 
 TreeServer.prototype.handleGetDirectory = function(client, element) {
+
     if (client !== undefined) {
         if ((element.isMatrix() || element.isParameter()) &&
             (!element.isStream())) {
@@ -311,7 +323,8 @@ TreeServer.prototype.handleGetDirectory = function(client, element) {
             // report their value changes automatically.
             this.subscribe(client, element);
         }
-        client.sendBERNode(element);
+        let res = this.getResponse(element);
+        client.sendBERNode(res);
     }
 }
 
@@ -340,21 +353,52 @@ TreeServer.prototype.unsubscribe = function(client, element) {
     this.subscribers[path].delete(client);
 }
 
-TreeServer.prototype.setValue = function(element, value, origin) {
+TreeServer.prototype.setValue = function(element, value, origin, key) {
     return new Promise((resolve, reject) => {
         // Change the element value if write access permitted.
-        if ((element.contents !== undefined) &&
-            (element.contents.access !== undefined) &&
-            (element.contents.access.value > 1)) {
-            element.contents.value = value;
-            this.emit("value-change", element);
+        if (element.contents !== undefined) {
+            if (element.isParameter()) {
+                if ((element.contents.access !== undefined) &&
+                    (element.contents.access.value > 1)) {
+                    element.contents.value = value;
+                    this.emit("value-change", element);
+                }
+            }
+            else if (element.isMatrix()) {
+                if ((key !== undefined) && (element.contents.hasOwnProperty(key))) {
+                    element.contents[key] = value;
+                    this.emit("value-change", element);
+                }
+            }
         }
 
-        let res = this.handleGetDirectory(origin, element);
+        let res = this.getResponse(element);
+        if (origin) {
+            this.client.sendBERNode(res)
+        }
         // Update the subscribers
         this.updateSubscribers(element.getPath(), res, origin);
     });
 }
+
+TreeServer.prototype.replaceElement = function(element) {
+    let path = element.getPath();
+    let parent = this.tree.getElementByPath(path);
+    if ((parent === undefined)||(parent._parent === undefined)) {
+        return;
+    }
+    parent = parent._parent;
+    let children = parent.getChildren();
+    for(let i = 0; i <= children.length; i++) {
+        if (children[i].getPath() == path) {
+            children[i] = element;
+            let res = this.getResponse(element);
+            this.updateSubscribers(path,res);
+            break;
+        }
+    }
+}
+
 
 TreeServer.prototype.updateSubscribers = function(path, response, origin) {
     if (this.subscribers[path] === undefined) {

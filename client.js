@@ -219,9 +219,13 @@ S101Socket.prototype.connect = function(timeout = 2) {
 
 }
 
+S101Socket.prototype.isConnected = function() {
+    return ((this.socket !== null) && (this.socket !== undefined));
+}
+
 S101Socket.prototype.disconnect = function() {
     var self = this;
-    if(self.socket !== null) {
+    if (self.isConnected()) {
         self.socket.destroy();
         self.socket = null;
         self.status = "disconnected";
@@ -230,7 +234,7 @@ S101Socket.prototype.disconnect = function() {
 
 S101Socket.prototype.sendKeepaliveRequest = function() {
     var self = this;
-    if(self.socket !== null) {
+    if (self.isConnected()) {
         self.socket.write(self.codec.keepAliveRequest());
         winston.debug('sent keepalive request');
     }
@@ -238,7 +242,7 @@ S101Socket.prototype.sendKeepaliveRequest = function() {
 
 S101Socket.prototype.sendKeepaliveResponse = function() {
     var self = this;
-    if(self.socket !== null) {
+    if (self.isConnected()) {
         self.socket.write(self.codec.keepAliveResponse());
         winston.debug('sent keepalive response');
     }
@@ -246,15 +250,17 @@ S101Socket.prototype.sendKeepaliveResponse = function() {
 
 S101Socket.prototype.sendBER = function(data) {
     var self = this;
-    var frames = self.codec.encodeBER(data);
-    for(var i=0; i<frames.length; i++) {
-        self.socket.write(frames[i]);
+    if (self.isConnected()) {
+        var frames = self.codec.encodeBER(data);
+        for (var i = 0; i < frames.length; i++) {
+            self.socket.write(frames[i]);
+        }
     }
 }
 
 S101Socket.prototype.sendBERNode = function(node) {
     var self=this;
-    if(node === null) return;
+    if (!node) return;
     var writer = new BER.Writer();
     node.encode(writer);
     self.sendBER(writer.buffer);

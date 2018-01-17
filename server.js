@@ -6,6 +6,7 @@ const ember = require('./ember.js');
 function TreeServer(host, port, tree) {
     TreeServer.super_.call(this);
     var self = this;
+    self._debug = false;
 
     self.callback = undefined;
     self.timeoutValue = 2000;
@@ -15,6 +16,7 @@ function TreeServer(host, port, tree) {
     self.subscribers = {};
 
     self.server.on('listening', () => {
+        if (self._debug) { console.log("listening"); }
         self.emit('listening');
         if (self.callback !== undefined) {
             self.callback();
@@ -23,8 +25,10 @@ function TreeServer(host, port, tree) {
     });
 
     self.server.on('connection', (client) => {
+        if (self._debug) { console.log("new connection from", client.remoteAddress()); }
         self.clients.add(client);
         client.on("emberTree", (root) => {
+            if (self._debug) { console.log("new request from", client.remoteAddress(), root); }
             // Queue the action to make sure responses are sent in order.
             client.addRequest(() => {
                 try {
@@ -32,6 +36,7 @@ function TreeServer(host, port, tree) {
                     self.emit("request", {client: client.remoteAddress(), root: root, path: path});
                 }
                 catch(e) {
+                    if (self._debug) { console.log(e.stack); }
                     self.emit("error", e);
                 }
             });
@@ -77,7 +82,10 @@ TreeServer.prototype.handleRoot = function(client, root) {
         return;
     }
 
+
     const node = root.elements[0];
+    if (this._debug) { console.log("new request", node); }
+
     if (node.path !== undefined) {
         return this.handleQualifiedNode(client, node);
     }
@@ -374,7 +382,8 @@ TreeServer.prototype.setValue = function(element, value, origin, key) {
 
         let res = this.getResponse(element);
         if (origin) {
-            this.client.sendBERNode(res)
+            if (this._debug) { console.log("Sending setvalue response", res); }
+            origin.sendBERNode(res)
         }
         // Update the subscribers
         this.updateSubscribers(element.getPath(), res, origin);

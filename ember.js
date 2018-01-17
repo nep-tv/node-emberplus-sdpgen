@@ -489,8 +489,14 @@ QualifiedNode.decode = function(ber) {
 
 QualifiedNode.prototype.update = function(other) {
     callbacks = QualifiedNode.super_.prototype.update.apply(this);
-    if ((other !== undefined) && (other.contents !== undefined)) {
-        this.contents = other.contents;
+    if((other === undefined) && (other.contents !== undefined)) {
+        //console.log("other: ", other.contents);
+        for(var key in other.contents) {
+            //console.log(key, other.contents.hasOwnProperty(key));
+            if(other.contents.hasOwnProperty(key)) {
+                this.contents[key] = other.contents[key];
+            }
+        }
     }
     return callbacks;
 }
@@ -625,8 +631,14 @@ Node.prototype.encode = function(ber) {
 
 Node.prototype.update = function(other) {
     callbacks = Node.super_.prototype.update.apply(this);
-    if(other.contents !== undefined) {
-        this.contents = other.contents;
+    if ((other !== undefined) && (other.contents !== undefined)) {
+        //console.log("other: ", other.contents);
+        for(var key in other.contents) {
+            //console.log(key, other.contents.hasOwnProperty(key));
+            if(other.contents.hasOwnProperty(key)) {
+                this.contents[key] = other.contents[key];
+            }
+        }
     }
     return callbacks;
 }
@@ -1215,7 +1227,12 @@ QualifiedMatrix.decode = function(ber) {
 function MatrixUpdate(matrix, newMatrix) {
     if (newMatrix !== undefined) {
         if (newMatrix.contents !== undefined) {
-            matrix.contents = newMatrix.contents;
+            for(var key in newMatrix.contents) {
+                //console.log(key, other.contents.hasOwnProperty(key));
+                if (newMatrix.contents.hasOwnProperty(key)) {
+                    matrix.contents[key] = newMatrix.contents[key];
+                }
+            }
         }
         if (newMatrix.targets !== undefined) {
             matrix.targets = newMatrix.targets;
@@ -1235,8 +1252,8 @@ function MatrixUpdate(matrix, newMatrix) {
             }
         }
     }
-
 }
+
 QualifiedMatrix.prototype.update = function(other) {
     callbacks = QualifiedMatrix.super_.prototype.update.apply(this);
     MatrixUpdate(this, other);
@@ -1527,12 +1544,15 @@ QualifiedFunction.decode = function(ber) {
 
 QualifiedFunction.prototype.update = function(other) {
     callbacks = QualifiedFunction.super_.prototype.update.apply(this);
-    if (other !== undefined) {
-        if (other.contents !== undefined) {
-            this.contents = other.contents;
+    if ((other !== undefined) && (other.contents !== undefined)) {
+        //console.log("other: ", other.contents);
+        for(var key in other.contents) {
+            //console.log(key, other.contents.hasOwnProperty(key));
+            if(other.contents.hasOwnProperty(key)) {
+                this.contents[key] = other.contents[key];
+            }
         }
     }
-
     return callbacks;
 }
 
@@ -1787,8 +1807,14 @@ QualifiedParameter.prototype.encode = function(ber) {
 
 QualifiedParameter.prototype.update = function(other) {
     callbacks = QualifiedParameter.super_.prototype.update.apply(this);
-    if(other.contents !== undefined) {
-        this.contents = other.contents;
+    if ((other !== undefined) && (other.contents !== undefined)) {
+        //console.log("other: ", other.contents);
+        for(var key in other.contents) {
+            //console.log(key, other.contents.hasOwnProperty(key));
+            if(other.contents.hasOwnProperty(key)) {
+                this.contents[key] = other.contents[key];
+            }
+        }
     }
     return callbacks;
 }
@@ -1917,7 +1943,7 @@ Parameter.prototype.update = function(other) {
     callbacks = Parameter.super_.prototype.update.apply(this);
     //console.log('update', this.getPath());
     //console.log(callbacks);
-    if(other.contents !== undefined) {
+    if ((other !== undefined) && (other.contents !== undefined)) {
         //console.log("other: ", other.contents);
         for(var key in other.contents) {
             //console.log(key, other.contents.hasOwnProperty(key));

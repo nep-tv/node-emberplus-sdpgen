@@ -10,6 +10,7 @@ const DEBUG = false;
 function DeviceTree(host, port) {
     DeviceTree.super_.call(this);
     var self = this;
+    self._debug = false;
     self.timeoutValue = 3000;
     self.client = new S101Client(host, port);
     self.root = new ember.Root();
@@ -43,6 +44,7 @@ function DeviceTree(host, port) {
 
     self.client.on('emberTree', (root) => {
         self.handleRoot(root);
+        if (self._debug) {console.log("Received roo", root);}
         if (self.callback) {
             self.callback(undefined, root);
         }
@@ -61,6 +63,10 @@ DeviceTree.prototype.saveTree = function(f) {
     var writer = new BER.Writer();
     this.root.encode(writer);
     f(writer.buffer);
+}
+
+DeviceTree.prototype.isConnected = function() {
+    return ((this.client !== undefined) && (this.client.isConnected()));
 }
 
 DeviceTree.prototype.connect = function(timeout = 2) {
@@ -125,7 +131,7 @@ DeviceTree.prototype.getDirectory = function(qnode) {
                 self.finishRequest();
             };
 
-            if (DEBUG) {console.log("Sending getDirectory", qnode);}
+            if (self._debug) {console.log("Sending getDirectory", qnode);}
             self.callback = cb;
             self.client.sendBERNode(qnode.getDirectory());
         });
@@ -183,7 +189,7 @@ DeviceTree.prototype.timeoutRequest = function(id) {
 DeviceTree.prototype.handleRoot = function(root) {
     var self=this;
 
-    //console.log("handling root", JSON.stringify(root));
+    if (self._debug) {console.log("handling root", JSON.stringify(root));}
     var callbacks = self.root.update(root);
     if(root.elements !== undefined) {
         for(var i=0; i<root.elements.length; i++) {
@@ -242,7 +248,7 @@ DeviceTree.prototype.handleQualifiedNode = function(parent, node) {
         }
     }
 
-    callbacks = parent.update();
+    //callbacks = parent.update();
 
     return callbacks;
 }
@@ -319,10 +325,8 @@ DeviceTree.prototype.setValue = function(node, value) {
         {
             reject(new errors.EmberAccessError('not a property'));
         }
-        else if(node.contents !== undefined && node.contents.value == value) {
-            resolve(node);
-        } else {
-            //console.log('setValue', node.getPath(), value);
+        else {
+            //if (this._debug) { console.log('setValue', node.getPath(), value); }
             self.addRequest((error) => {
                 if(error) {
                     self.finishRequest();
@@ -342,7 +346,7 @@ DeviceTree.prototype.setValue = function(node, value) {
                 };
 
                 self.callback = cb;
-                //console.log('setValue sending ...', node.getPath(), value);
+                if (this._debug) { console.log('setValue sending ...', node.getPath(), value); }
                 self.client.sendBERNode(node.setValue(value));
             });
         }

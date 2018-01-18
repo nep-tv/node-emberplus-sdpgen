@@ -44,7 +44,7 @@ function DeviceTree(host, port) {
 
     self.client.on('emberTree', (root) => {
         self.handleRoot(root);
-        if (self._debug) {console.log("Received roo", root);}
+        if (self._debug) {console.log("Received root", root);}
         if (self.callback) {
             self.callback(undefined, root);
         }
@@ -216,6 +216,7 @@ DeviceTree.prototype.handleQualifiedNode = function(parent, node) {
     var element = parent.getElementByPath(node.path);
     if (element !== null) {
         //console.log("Found element", JSON.stringify(element));
+        self.emit("value-change", node);
         callbacks = element.update(node);
     }
     else {
@@ -262,6 +263,7 @@ DeviceTree.prototype.handleNode = function(parent, node) {
         parent.addChild(node);
         n = node;
     } else {
+        self.emit("value-change", node);
         callbacks = n.update(node);
     }
 

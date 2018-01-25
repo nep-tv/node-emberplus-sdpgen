@@ -84,7 +84,16 @@ TreeServer.prototype.handleRoot = function(client, root) {
 
 
     const node = root.elements[0];
-    if (this._debug) { console.log("new request", node); }
+    if (this._debug) {
+        let n;
+        try {
+            n = JSON.stringify(node);
+        }
+        catch(e) {
+            n = node;
+        }
+        console.log("new request", n);
+    }
 
     if (node.path !== undefined) {
         return this.handleQualifiedNode(client, node);
@@ -137,11 +146,12 @@ TreeServer.prototype.handleNode = function(client, node) {
         if (element instanceof ember.Command) {
             break;
         }
+        path.push(element.number);
+
         let children = element.getChildren();
-        if ((children === undefined) || (children.length === 0)) {
+        if ((! children) || (children.length === 0)) {
             break;
         }
-        path.push(element.number);
         element = element.children[0];
     }
     let cmd = element;
@@ -155,6 +165,7 @@ TreeServer.prototype.handleNode = function(client, node) {
 
     if ((element === null) || (element === undefined)) {
         this.emit("error", new Error(`unknown element at path ${path}`));
+        if (this._debug) { console.log(`unknown element at path ${path}`); }
         return;
     }
 
@@ -166,11 +177,12 @@ TreeServer.prototype.handleNode = function(client, node) {
     }
     else if ((cmd instanceof ember.Parameter) &&
         (cmd.contents !== undefined) && (cmd.contents.value !== undefined)) {
-        // New value Received.
+        if (this._debug) { console.log(`setValue for element at path ${path} with value ${cmd.contents.value}`); }
         this.setValue(element, cmd.contents.value, client);
     }
     else {
-        this.emit("error", new Error(`invalid request format`));
+        this.emit("error", new Error("invalid request format"));
+        if (this._debug) { console.log("invalid request format"); }
     }
     return path;
 }

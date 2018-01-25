@@ -1241,6 +1241,9 @@ function MatrixUpdate(matrix, newMatrix) {
             matrix.sources = newMatrix.sources;
         }
         if (newMatrix.connections !== undefined) {
+            if (matrix.connections === undefined) {
+                matrix.connections = {};
+            }
             for(let id in newMatrix.connections) {
                 if (newMatrix.connections.hasOwnProperty(id)) {
                     let connection = newMatrix.connections[id];

@@ -328,7 +328,7 @@ DeviceTree.prototype.setValue = function(node, value) {
             reject(new errors.EmberAccessError('not a property'));
         }
         else {
-            //if (this._debug) { console.log('setValue', node.getPath(), value); }
+            // if (this._debug) { console.log('setValue', node.getPath(), value); }
             self.addRequest((error) => {
                 if(error) {
                     self.finishRequest();

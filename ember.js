@@ -10,7 +10,11 @@ module.exports.Subscribe    = COMMAND_SUBSCRIBE;
 module.exports.Unsubscribe  = COMMAND_UNSUBSCRIBE;
 module.exports.GetDirectory = COMMAND_GETDIRECTORY;
 
+DEBUG = false;
 
+module.exports.DEBUG = function(d) {
+    DEBUG = d;
+};
 
 /****************************************************************************
  * Root
@@ -18,6 +22,7 @@ module.exports.GetDirectory = COMMAND_GETDIRECTORY;
 
 function Root() {
     Root.super_.call(this);
+
     //Object.defineProperty(this, '_parent', {value: null, enumerable: false});
 };
 
@@ -29,16 +34,13 @@ Root.decode = function(ber) {
     let tag = undefined;
 
     while(ber.remain > 0) {
-        try {
-            ber = ber.getSequence(BER.APPLICATION(0));
-            tag = ber.peek();
-        }
-        catch (e) {
-            break;
-        }
-
+        if (DEBUG) { console.log("Reading root"); }
+        ber = ber.getSequence(BER.APPLICATION(0));
+        tag = ber.peek();
+        if (DEBUG) { console.log("Application 0 start"); }
 
         if (tag == BER.APPLICATION(11)) {
+            if (DEBUG) { console.log("Application 11 start"); }
             var seq = ber.getSequence(BER.APPLICATION(11));
             r.elements = [];
             while (seq.remain > 0) {
@@ -413,19 +415,26 @@ function Element() {};
 Element.decode = function(ber) {
     var tag = ber.peek();
     if(tag == BER.APPLICATION(1)) {
+        if (DEBUG) { console.log("Parameter decode");}
         return Parameter.decode(ber);
     } else if(tag == BER.APPLICATION(3)) {
+        if (DEBUG) { console.log("Node decode");}
         return Node.decode(ber);
     } else if(tag == BER.APPLICATION(2)) {
+        if (DEBUG) { console.log("Command decode");}
         return Command.decode(ber);
     } else if(tag == BER.APPLICATION(9)) {
+        if (DEBUG) { console.log("QualifiedParameter decode");}
         return QualifiedParameter.decode(ber);
     } else if(tag == BER.APPLICATION(10)) {
+        if (DEBUG) { console.log("QualifiedNode decode");}
         return QualifiedNode.decode(ber);
     } else if(tag == BER.APPLICATION(13)) {
+        if (DEBUG) { console.log("MatrixNode decode");}
         return MatrixNode.decode(ber);
     }
     else if(tag == BER.APPLICATION(17)) {
+        if (DEBUG) { console.log("QualifiedMatrix decode");}
         return QualifiedMatrix.decode(ber);
     }
     else if(tag == BER.APPLICATION(19)) {
@@ -484,6 +493,7 @@ QualifiedNode.decode = function(ber) {
             throw new errors.UnimplementedEmberTypeError(tag);
         }
     }
+    if (DEBUG) { console.log("QualifiedNode", qn); }
     return qn;
 }
 
@@ -598,6 +608,7 @@ Node.decode = function(ber) {
             throw new errors.UnimplementedEmberTypeError(tag);
         }
     }
+    if (DEBUG) { console.log("Node", n); }
     return n;
 }
 
@@ -700,6 +711,7 @@ MatrixNode.decode = function(ber) {
             throw new errors.UnimplementedEmberTypeError(tag);
         }
     }
+    if (DEBUG) { console.log("MatrixNode", m); }
     return m;
 };
 
@@ -1221,6 +1233,7 @@ QualifiedMatrix.decode = function(ber) {
             throw new errors.UnimplementedEmberTypeError(tag);
         }
     }
+    if (DEBUG) { console.log("QualifiedMatrix", qm); }
     return qm;
 }
 
@@ -1701,7 +1714,19 @@ module.exports.NodeContents = NodeContents;
 function Command(number) {
     if(number !== undefined)
         this.number = number;
+    this.fieldFlags = FieldFlags.all;
 }
+
+var FieldFlags = new Enum({
+    sparse: -2,
+    all: -1,
+    default: 0,
+    identifier: 1,
+    description: 2,
+    tree: 3,
+    value: 4,
+    connections: 5
+});
 
 Command.decode = function(ber) {
     var c = new Command();
@@ -1712,7 +1737,14 @@ Command.decode = function(ber) {
         var seq = ber.getSequence(tag);
         if(tag == BER.CONTEXT(0)) {
             c.number = seq.readInt();
-        } else {
+        }
+        else if(tag == BER.CONTEXT(1)) {
+            c.fieldFlags = FieldFlags.get(seq.readInt());
+        }
+        else if(tag == BER.CONTEXT(2)) {
+            c.invocation = Invocation.decode(ber);
+        }
+        else {
             // TODO: options
             throw new errors.UnimplementedEmberTypeError(tag);
         }
@@ -1728,6 +1760,17 @@ Command.prototype.encode = function(ber) {
     ber.writeInt(this.number);
     ber.endSequence(); // BER.CONTEXT(0)
 
+    if (this.fieldFlags) {
+        ber.startSequence(BER.CONTEXT(1));
+        ber.writeInt(this.fieldFlags.value);
+        ber.endSequence();
+    }
+
+    if (this.invocation) {
+        ber.startSequence(BER.CONTEXT(2));
+        this.invocation.encode(ber);
+        ber.endSequence();
+    }
     // TODO: options
 
     ber.endSequence(); // BER.APPLICATION(2)
@@ -1735,7 +1778,56 @@ Command.prototype.encode = function(ber) {
 
 module.exports.Command = Command;
 
+/****************************************************************************
+ * Invocation
+ ***************************************************************************/
+function Invocation() {
+    Invocation.super_.call(this);
+}
 
+Invocation.decode = function(ber) {
+    let invocation = new Invocation();
+    ber = ber.getSequence(BER.APPLICATION(22));
+    while(ber.remain > 0) {
+        var tag = ber.peek();
+        var seq = ber.getSequence(tag);
+        if(tag == BER.CONTEXT(0)) {
+            invocation.invocationId = seq.readInt();
+        }
+        if(tag == BER.CONTEXT(1)) {
+            invocation.arguments = [];
+            let seq = ber.getSequence(BER.EMBER_SEQUENCE);
+            while(seq.remain > 0) {
+                tag = seq.peek();
+                var dataSeq = seq.getSequence(BER.CONTEXT(0));
+                if (tag === BER.CONTEXT(0)) {
+                    invocation.arguments.push(dataSeq.readValue());
+                }
+            }
+        }
+        else {
+            // TODO: options
+            throw new errors.UnimplementedEmberTypeError(tag);
+        }
+    }
+
+    return invocation;
+}
+
+Invocation.prototype.encode = function(ber) {
+    ber.startSequence(BER.APPLICATION(22));
+    ber.startSequence(BER.EMBER_SEQUENCE);
+
+    for(var i =0; i < this.arguments; i++) {
+        ber.startSequence(BER.CONTEXT(0));
+        ber.writeValue(this.arguments[i]);
+        ber.endSequence();
+    }
+
+    ber.endSequence();
+
+    ber.endSequence(); // BER.APPLICATION(22)
+}
 /****************************************************************************
  * QualifiedParameter
  ***************************************************************************/
@@ -1747,7 +1839,6 @@ function QualifiedParameter(path) {
 }
 
 util.inherits(QualifiedParameter, TreeNode);
-module.exports.QualifiedParameter = QualifiedParameter;
 
 QualifiedParameter.decode = function(ber) {
     //console.log("Decoding QualifiedParameter");
@@ -1777,6 +1868,7 @@ QualifiedParameter.decode = function(ber) {
             //throw new errors.UnimplementedEmberTypeError(tag);
         }
     }
+    if (DEBUG) { console.log("QualifiedParameter", qp); }
     return qp;
 }
 
@@ -1889,6 +1981,7 @@ Parameter.decode = function(ber) {
         var seq = ber.getSequence(tag);
         if(tag == BER.CONTEXT(0)) {
             p.number = seq.readInt();
+
         } else if(tag == BER.CONTEXT(1)) {
             p.contents = ParameterContents.decode(seq);
         } else if(tag == BER.CONTEXT(2)) {
@@ -1902,7 +1995,7 @@ Parameter.decode = function(ber) {
             throw new errors.UnimplementedEmberTypeError(tag);
         }
     }
-
+    if (DEBUG) { console.log("Parameter", p); }
     return p;
 }
 

@@ -77,6 +77,9 @@ DeviceTree.prototype.connect = function(timeout = 2) {
             }
             return reject(e);
         };
+        if ((this.client !== undefined) && (this.client.isConnected())) {
+            this.client.disconnect();
+        }
         this.client.connect(timeout);
     });
 }
@@ -139,7 +142,9 @@ DeviceTree.prototype.getDirectory = function(qnode) {
 }
 
 DeviceTree.prototype.disconnect = function() {
-    this.client.disconnect();
+    if (this.client !== undefined) {
+        return this.client.disconnect();
+    }
 }
 
 DeviceTree.prototype.makeRequest = function() {

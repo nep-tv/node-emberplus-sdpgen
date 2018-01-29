@@ -206,7 +206,7 @@ TreeServer.prototype.handleMatrixConnections = function(client, matrix, connecti
     if (matrix.isQualified()) {
         root = new ember.Root();
         res = new ember.QualifiedMatrix(matrix.path);
-        root.addChild(res);
+        root.elements = [res]; // do not use addchild or the element will get removed from the tree.
     }
     else {
         res = new ember.MatrixNode(matrix.number);
@@ -277,7 +277,7 @@ const validateMatrixOperation = function(matrix, target, sources) {
         throw new Error(`invalid matrix at ${path} : no targetCount`);
     }
     if ((target < 0) || (target >= matrix.contents.targetCount)) {
-        throw new Error(`invalid target id at ${target}`);
+        throw new Error(`target id ${target} out of range 0 - ${matrix.contents.targetCount}`);
     }
     if (sources.length === undefined) {
         throw new Error("invalid sources format");
@@ -326,7 +326,7 @@ TreeServer.prototype.getResponse = function(element) {
     let res = element;
     if (element.isQualified()) {
         res = new ember.Root();
-        res.addChild(element);
+        res.elements = [element];
     }
     else if (element._parent) {
         res = element._parent.getTreeBranch(element);
@@ -406,16 +406,18 @@ TreeServer.prototype.replaceElement = function(element) {
     let path = element.getPath();
     let parent = this.tree.getElementByPath(path);
     if ((parent === undefined)||(parent._parent === undefined)) {
-        return;
+        throw new Error(`Could not find element at path ${path}`);
     }
     parent = parent._parent;
     let children = parent.getChildren();
+    let newList = [];
     for(let i = 0; i <= children.length; i++) {
-        if (children[i].getPath() == path) {
+        if (children[i] && children[i].getPath() == path) {
+            element._parent = parent; // move it to new tree.
             children[i] = element;
             let res = this.getResponse(element);
             this.updateSubscribers(path,res);
-            break;
+            return;
         }
     }
 }

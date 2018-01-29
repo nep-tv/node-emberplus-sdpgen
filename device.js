@@ -268,7 +268,6 @@ DeviceTree.prototype.handleNode = function(parent, node) {
         parent.addChild(node);
         n = node;
     } else {
-        self.emit("value-change", node);
         callbacks = n.update(node);
     }
 
@@ -277,6 +276,9 @@ DeviceTree.prototype.handleNode = function(parent, node) {
         for(var i=0; i<children.length; i++) {
             callbacks = callbacks.concat(this.handleNode(n, children[i]));
         }
+    }
+    else {
+        self.emit("value-change", node);
     }
 
     //console.log('handleNode: ', callbacks);

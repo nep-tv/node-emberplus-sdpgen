@@ -1839,6 +1839,8 @@ function QualifiedParameter(path) {
 }
 
 util.inherits(QualifiedParameter, TreeNode);
+module.exports.QualifiedParameter = QualifiedParameter;
+
 
 QualifiedParameter.decode = function(ber) {
     //console.log("Decoding QualifiedParameter");

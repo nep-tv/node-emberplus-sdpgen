@@ -2074,9 +2074,14 @@ var ParameterType = new Enum({
 module.exports.ParameterAccess = ParameterAccess;
 module.exports.ParameterType = ParameterType;
 
-function ParameterContents(value) {
+function ParameterContents(value, type) {
     if(value !== undefined) {
         this.value = value;
+    }
+    if(type !== undefined) {
+        if((type = ParameterType.get(type)) !== undefined){
+            this.type = type
+        }
     }
 };
 

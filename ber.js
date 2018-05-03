@@ -279,7 +279,15 @@ ExtendedWriter.prototype.writeReal = function(value, tag) {
 }
 
 ExtendedWriter.prototype.writeValue = function(value, tag) {
-    if(Number.isInteger(value)) {
+    // accepts Ember.ParameterContents for enforcing real types
+     if(typeof value === 'object' && value.type && value.type.key && value.type.key.length && typeof value.type.key === 'string') {
+         if(value.type.key === 'real') {
+            this.writeReal(value.value, tag);
+            return
+         }
+     }
+
+     if(Number.isInteger(value)) {
         if (tag === undefined) {
             tag = EMBER_INTEGER;
         }

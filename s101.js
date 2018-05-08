@@ -245,6 +245,7 @@ S101Codec.prototype.keepAliveRequest = function() {
     packet.writeUInt8(SLOT);
     packet.writeUInt8(MSG_EMBER);
     packet.writeUInt8(CMD_KEEPALIVE_REQ);
+    packet.writeUInt8(VERSION);
     return finalizeBuffer(packet);
 }
 
@@ -254,6 +255,7 @@ S101Codec.prototype.keepAliveResponse = function() {
     packet.writeUInt8(SLOT);
     packet.writeUInt8(MSG_EMBER);
     packet.writeUInt8(CMD_KEEPALIVE_RESP);
+    packet.writeUInt8(VERSION);
     return finalizeBuffer(packet);
 }
 

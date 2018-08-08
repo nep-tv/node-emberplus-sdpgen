@@ -76,6 +76,18 @@ TreeServer.prototype.listen = function() {
     });
 };
 
+TreeServer.prototype.close = function () {
+    return new Promise((resolve, reject) => {
+        this.callback = (e) => {
+            if (e === undefined) {
+                return resolve();
+            }
+            return reject(e);
+        };
+        this.server.server.close();
+    });
+};
+
 TreeServer.prototype.handleRoot = function(client, root) {
     if ((root === undefined) || (root.elements === undefined) || (root.elements < 1)) {
         this.emit("error", new Error("invalid request"));

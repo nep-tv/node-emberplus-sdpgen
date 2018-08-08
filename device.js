@@ -85,30 +85,40 @@ DeviceTree.prototype.connect = function(timeout = 2) {
 DeviceTree.prototype.expand = function(node)
 {
     let self = this;
+    if (node == null) {
+        return Promise.reject(new Error("Invalid null node"));
+    }
+    if (node.isParameter()) {
+        return self.getDirectory(node);
+    }
     return self.getDirectory(node).then((res) => {
         let children = node.getChildren();
         if ((res === undefined) || (children === undefined) || (children === null)) {
             if (self._debug) {console.log("No more children for ", node);}
             return;
         }
-        let p = [];
+        let p = Promise.resolve();
         for (let child of children) {
+            if (child.isParameter()) {
+                // Parameter can only have a single child of type Command.
+                continue;
+            }
             if (self._debug) {console.log("Expanding child", child);}
-            p.push(
-                self.expand(child).catch((e) => {
+            p = p.then(() => {
+                return self.expand(child).catch((e) => {
                     // We had an error on some expansion
                     // let's save it on the child itself
                     child.error = e;
-                })
-            );
+                });
+            });
         }
-        return Promise.all(p);
+        return p;
     });
 }
 
 DeviceTree.prototype.getDirectory = function(qnode) {
     var self = this;
-    if (qnode === undefined) {
+    if (qnode == null) {
         self.root.clear();
         qnode = self.root;
     }

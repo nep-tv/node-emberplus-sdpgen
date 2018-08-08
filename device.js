@@ -5,7 +5,6 @@ const ember = require('./ember.js');
 const BER = require('./ber.js');
 const errors = require('./errors.js');
 
-const DEBUG = false;
 
 function DeviceTree(host, port = 9000) {
     DeviceTree.super_.call(this);
@@ -96,12 +95,12 @@ DeviceTree.prototype.expand = function(node)
     return self.getDirectory(node).then((res) => {
         let children = node.getChildren();
         if ((res === undefined) || (children === undefined) || (children === null)) {
-            if (DEBUG) {console.log("No more children for ", node);}
+            if (self._debug) {console.log("No more children for ", node);}
             return;
         }
         let p = [];
         for (let child of children) {
-            if (DEBUG) {console.log("Expanding child", child);}
+            if (self._debug) {console.log("Expanding child", child);}
             p.push(
                 self.expand(child).catch((e) => {
                     // We had an error on some expansion
@@ -134,7 +133,7 @@ DeviceTree.prototype.getDirectory = function(qnode) {
                     reject(error);
                 }
                 else {
-                    if (DEBUG) {console.log("Received getDirectory response", node);}
+                    if (self._debug) {console.log("Received getDirectory response", node);}
                     resolve(node); // make sure the info is treated before going to next request.
                 }
                 self.finishRequest();
@@ -188,7 +187,7 @@ DeviceTree.prototype.makeRequest = function() {
         self.activeRequest = self.pendingRequests.shift();
 
         const t = function(id) {
-            if (DEBUG) {console.log(`Making request ${id}`,Date.now());}
+            if (self._debug) {console.log(`Making request ${id}`,Date.now());}
             self.timeout = setTimeout(() => {
                 self.timeoutRequest(id);
             }, self.timeoutValue);

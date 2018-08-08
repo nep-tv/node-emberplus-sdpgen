@@ -25,10 +25,10 @@ function TreeServer(host, port, tree) {
     });
 
     self.server.on('connection', (client) => {
-        if (self._debug) { console.log("new connection from", client.remoteAddress()); }
+        if (self._debug) { console.log("ember new connection from", client.remoteAddress()); }
         self.clients.add(client);
         client.on("emberTree", (root) => {
-            if (self._debug) { console.log("new request from", client.remoteAddress(), root); }
+            if (self._debug) { console.log("ember new request from", client.remoteAddress(), root); }
             // Queue the action to make sure responses are sent in order.
             client.addRequest(() => {
                 try {
@@ -76,6 +76,18 @@ TreeServer.prototype.listen = function() {
     });
 };
 
+TreeServer.prototype.close = function () {
+    return new Promise((resolve, reject) => {
+        this.callback = (e) => {
+            if (e === undefined) {
+                return resolve();
+            }
+            return reject(e);
+        };
+        this.server.server.close();
+    });
+};
+
 TreeServer.prototype.handleRoot = function(client, root) {
     if ((root === undefined) || (root.elements === undefined) || (root.elements < 1)) {
         this.emit("error", new Error("invalid request"));
@@ -84,16 +96,7 @@ TreeServer.prototype.handleRoot = function(client, root) {
 
 
     const node = root.elements[0];
-    if (this._debug) {
-        let n;
-        try {
-            n = JSON.stringify(node);
-        }
-        catch(e) {
-            n = node;
-        }
-        console.log("new request", n);
-    }
+    client.request = node;
 
     if (node.path !== undefined) {
         return this.handleQualifiedNode(client, node);
@@ -108,6 +111,14 @@ TreeServer.prototype.handleRoot = function(client, root) {
     }
 }
 
+TreeServer.prototype.handleError = function(client, node) {
+    if (client !== undefined) {
+        let res = node == null ? this.tree._root.getMinimal() : node;
+        client.sendBERNode(res);
+    }
+}
+
+
 TreeServer.prototype.handleQualifiedNode = function(client, node) {
     const path = node.path;
     // Find this element in our tree
@@ -115,7 +126,7 @@ TreeServer.prototype.handleQualifiedNode = function(client, node) {
 
     if ((element === null) || (element === undefined)) {
         this.emit("error", new Error(`unknown element at path ${path}`));
-        return;
+        return this.handleError(client);
     }
 
     if ((node.children !== undefined) && (node.children.length === 1) &&
@@ -158,15 +169,14 @@ TreeServer.prototype.handleNode = function(client, node) {
 
     if (cmd === undefined) {
         this.emit("error", "invalid request");
-        return;
+        return this.handleError(client);
     }
 
     element = this.tree.getElementByPath(path.join("."));
 
-    if ((element === null) || (element === undefined)) {
+    if (element == null) {
         this.emit("error", new Error(`unknown element at path ${path}`));
-        if (this._debug) { console.log(`unknown element at path ${path}`); }
-        return;
+        return this.handleError(client);
     }
 
     if (cmd instanceof ember.Command) {
@@ -179,10 +189,14 @@ TreeServer.prototype.handleNode = function(client, node) {
         (cmd.contents !== undefined) && (cmd.contents.value !== undefined)) {
         if (this._debug) { console.log(`setValue for element at path ${path} with value ${cmd.contents.value}`); }
         this.setValue(element, cmd.contents.value, client);
+        let res = this.getResponse(element);
+        client.sendBERNode(res)
+        this.updateSubscribers(element.getPath(), res, client);
     }
     else {
         this.emit("error", new Error("invalid request format"));
         if (this._debug) { console.log("invalid request format"); }
+        return this.handleError(client, element.getTreeBranch());
     }
     return path;
 }
@@ -196,6 +210,9 @@ TreeServer.prototype.handleQualifiedParameter = function(client, element, parame
 {
     if (parameter.contents.value !== undefined) {
         this.setValue(element, parameter.contents.value, client);
+        let res = this.getQualifiedResponse(element);
+        client.sendBERNode(res)
+        this.updateSubscribers(element.getPath(), res, client);
     }
 }
 
@@ -323,14 +340,30 @@ TreeServer.prototype.handleCommand = function(client, element, cmd) {
 }
 
 TreeServer.prototype.getResponse = function(element) {
-    let res = element;
-    if (element.isQualified()) {
-        res = new ember.Root();
-        res.elements = [element];
+    return element.getTreeBranch(undefined, function(node) {
+        node.update(element);
+        let children = element.getChildren();
+        if (children != null) {
+            for (let i = 0; i < children.length; i++) {
+                node.addChild(children[i].getDuplicate());
+            }
+        }
+        else if (this._debug) {
+            console.log("getResponse","no children");
+        }
+    });
+}
+
+TreeServer.prototype.getQualifiedResponse = function(element) {
+    let res = new ember.Root();
+    let dup = element.toQualified();
+    let children = element.getChildren();
+    if (children != null) {
+        for (let i = 0; i < children.length; i++) {
+            dup.addChild(children[i].getDuplicate());
+        }
     }
-    else if (element._parent) {
-        res = element._parent.getTreeBranch(element);
-    }
+    res.elements = [dup];
     return res;
 }
 
@@ -343,7 +376,13 @@ TreeServer.prototype.handleGetDirectory = function(client, element) {
             // report their value changes automatically.
             this.subscribe(client, element);
         }
-        let res = this.getResponse(element);
+        let res;
+        if (client.request.path == null) {
+            res = this.getResponse(element);
+        }
+        else {
+            res = this.getQualifiedResponse(element);
+        }
         client.sendBERNode(res);
     }
 }
@@ -391,14 +430,6 @@ TreeServer.prototype.setValue = function(element, value, origin, key) {
                 }
             }
         }
-
-        let res = this.getResponse(element);
-        if (origin) {
-            if (this._debug) { console.log("Sending setvalue response", res); }
-            origin.sendBERNode(res)
-        }
-        // Update the subscribers
-        this.updateSubscribers(element.getPath(), res, origin);
     });
 }
 
@@ -442,23 +473,15 @@ TreeServer.prototype.updateSubscribers = function(path, response, origin) {
     }
 }
 
-const parseObj = function(parent, obj, isQualified) {
+const parseObj = function(parent, obj) {
     let path = parent.getPath();
     for(let i = 0; i < obj.length; i++) {
         let emberElement;
         let content = obj[i];
         let number = content.number !== undefined ? content.number : i;
         delete content.number;
-        //console.log(`parsing obj at number ${number}`, content);
         if (content.value !== undefined) {
-            //console.log("new parameter");
-            // this is a parameter
-            if (isQualified) {
-                emberElement = new ember.QualifiedParameter(`${path}${path !== "" ? "." : ""}${number}`);
-            }
-            else {
-                emberElement = new ember.Parameter(number);
-            }
+            emberElement = new ember.Parameter(number);
             emberElement.contents = new ember.ParameterContents(content.value);
             if (content.type) {
                 emberElement.contents.type = ember.ParameterType.get(content.type);
@@ -476,13 +499,7 @@ const parseObj = function(parent, obj, isQualified) {
             }
         }
         else if (content.targetCount !== undefined) {
-            //console.log("new matrix");
-            if (isQualified) {
-                emberElement = new ember.QualifiedMatrix(`${path}${path !== "" ? "." : ""}${number}`);
-            }
-            else {
-                emberElement = new ember.MatrixNode(number);
-            }
+            emberElement = new ember.MatrixNode(number);
             emberElement.contents = new ember.MatrixContents();
 
             if (content.labels) {
@@ -518,32 +535,87 @@ const parseObj = function(parent, obj, isQualified) {
             }
         }
         else {
-            //console.log("new node");
-            if (isQualified) {
-                emberElement = new ember.QualifiedNode(`${path}${path !== "" ? "." : ""}${number}`);
-            }
-            else {
-                emberElement = new ember.Node(number);
-            }
+            emberElement = new ember.Node(number);
             emberElement.contents = new ember.NodeContents();
         }
         for(let id in content) {
             if ((id !== "children") && (content.hasOwnProperty(id))) {
-                //console.log(`adding contents ${id}`);
                 emberElement.contents[id] = content[id];
             }
             else {
-                parseObj(emberElement, content.children, isQualified);
+                parseObj(emberElement, content.children);
             }
         }
         parent.addChild(emberElement);
     }
 }
 
-TreeServer.JSONtoTree = function(obj, isQualified = true) {
+TreeServer.JSONtoTree = function(obj) {
     let tree = new ember.Root();
-    parseObj(tree, obj, isQualified);
+    parseObj(tree, obj);
     return tree;
 }
+
+const toJSON = function(node) {
+    let res = {};
+
+    if (node.number) {
+        res.number = node.number
+    }
+    if (node.path) {
+        res.path = node.path;
+    }
+    if (node.contents) {
+        for(let prop in node.contents) {
+            if (node.contents.hasOwnProperty(prop)) {
+                let type = typeof node.contents[prop];
+                if ((type === "string") || (type === "number")) {
+                    res[prop] = node.contents[prop];
+                }
+                else if (node.contents[prop].value !== undefined) {
+                    res[prop] = node.contents[prop].value;
+                }
+                else {
+                    res[prop] = node.contents[prop];
+                }
+            }
+        }
+    }
+    if (node.isMatrix()) {
+        if (node.targets) {
+            res.targets = node.targets.slice(0);
+        }
+        if (node.sources) {
+            res.sources = node.sources.slice(0);
+        }
+        if (node.connections) {
+            res.connections = {};
+            for (let target in connections) {
+                if (connections.hasOwnProperty(target)) {
+                    res.connections[target] = {target: target, sources: []};
+                    if (connections[target].sources) {
+                        res.connections[target].sources = connections[target].sources.slice(0);
+                    }
+                }
+            }
+
+        }
+    }
+    let children = node.getChildren();
+    if (children) {
+        res.children = [];
+        for(let child of children) {
+            res.children.push(toJSON(child));
+        }
+    }
+    return res;
+};
+
+TreeServer.prototype.toJSON = function() {
+    if ((!this.tree) || (!this.tree.elements) || (this.tree.elements.length == 0)) {
+        return [];
+    }
+    return [].push(toJSON(this.tree.elements[0]));
+};
 
 module.exports = TreeServer;

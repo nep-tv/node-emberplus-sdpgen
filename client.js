@@ -28,6 +28,7 @@ function S101Client(socket, server) {
     var self = this;
     S101Client.super_.call(this);
 
+    self.request = null;
     self.server = server;
     self.socket = socket;
 
@@ -42,7 +43,6 @@ function S101Client(socket, server) {
 
     self.codec.on('emberPacket', (packet) => {
         self.emit('emberPacket', packet);
-
         var ber = new BER.Reader(packet);
         try {
             var root = ember.Root.decode(ber);
@@ -95,11 +95,11 @@ S101Server.prototype.listen = function() {
     if (self.status !== "disconnected") {
         return;
     }
-    
+
     self.server = net.createServer((socket) => {
         self.addClient(socket);
     });
-   
+
     self.server.on("error", (e) => {
         self.emit("error", e);
     });
@@ -108,7 +108,7 @@ S101Server.prototype.listen = function() {
         self.emit("listening");
         self.status = "listening";
     });
- 
+
     self.server.listen(self.port, self.address);
 }
 

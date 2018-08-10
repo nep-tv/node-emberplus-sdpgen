@@ -10,7 +10,7 @@ const COMMAND_INVOKE        = 33;
 module.exports.Subscribe    = COMMAND_SUBSCRIBE;
 module.exports.Unsubscribe  = COMMAND_UNSUBSCRIBE;
 module.exports.GetDirectory = COMMAND_GETDIRECTORY;
-module.exports.GetDirectory = COMMAND_INVOKE;
+module.exports.Invoke       = COMMAND_INVOKE;
 
 DEBUG = false;
 

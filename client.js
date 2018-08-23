@@ -16,7 +16,7 @@ function S101Socket(address, port) {
     self.port = port;
     self.socket = null;
     self.keepaliveInterval = 10;
-    self.codec = new S101Codec();
+    self.codec = null;
     self.status = "disconnected";
 
 }
@@ -171,13 +171,13 @@ S101Socket.prototype.connect = function (timeout = 2) {
         }, 1000 * timeout);
     }
 
+    self.codec = new S101Codec();
     self.socket = net.createConnection(self.port, self.address, () => {
         winston.debug('socket connected');
 
         if (self._timer) {
             clearTimeout(self._timer);
         }
-
 
         self.keepaliveIntervalTimer = setInterval(() => {
             self.sendKeepaliveRequest();
@@ -229,13 +229,16 @@ S101Socket.prototype.disconnect = function () {
     if (!self.isConnected()) {
         return Promise.resolve();
     }
-
     return new Promise((resolve, reject) => {
-            self.socket.once('close', resolve);
+            self.socket.once('close', () => {
+                self.codec = null;
+                self.socket = null;
+                resolve();
+            });
             self.socket.once('error', reject);
             clearInterval(self.keepaliveIntervalTimer);
-            self.socket.destroy();
-            self.socket = null;
+            clearTimeout(self._timeout);
+            self.socket.end();
             self.status = "disconnected";
         }
     );

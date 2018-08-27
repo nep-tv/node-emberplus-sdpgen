@@ -16,7 +16,7 @@ function S101Socket(address, port) {
     self.port = port;
     self.socket = null;
     self.keepaliveInterval = 10;
-    self.codec = new S101Codec();
+    self.codec = null;
     self.status = "disconnected";
 
 }
@@ -49,7 +49,7 @@ function S101Client(socket, server) {
             if (root !== undefined) {
                 self.emit('emberTree', root);
             }
-        } catch(e) {
+        } catch (e) {
             self.emit("error", e);
         }
     });
@@ -90,7 +90,7 @@ function S101Server(address, port) {
 
 util.inherits(S101Server, EventEmitter);
 
-S101Server.prototype.listen = function() {
+S101Server.prototype.listen = function () {
     var self = this;
     if (self.status !== "disconnected") {
         return;
@@ -113,7 +113,7 @@ S101Server.prototype.listen = function() {
 }
 
 
-S101Server.prototype.addClient = function(socket) {
+S101Server.prototype.addClient = function (socket) {
     var client = new S101Client(socket, this);
     this.emit("connection", client);
 }
@@ -123,29 +123,29 @@ S101Server.prototype.addClient = function(socket) {
  * Client
  *****************************************************/
 
-S101Client.prototype.remoteAddress = function() {
+S101Client.prototype.remoteAddress = function () {
     if (this.socket === undefined) {
         return;
     }
     return `${this.socket.remoteAddress}:${this.socket.remotePort}`
 }
 
-S101Client.prototype.queueMessage = function(node) {
+S101Client.prototype.queueMessage = function (node) {
     const self = this;
     this.addRequest(() => {
         self.sendBERNode(node);
     });
 }
 
-S101Client.prototype.makeRequest = function() {
-    if(this.activeRequest === null && this.pendingRequests.length > 0) {
+S101Client.prototype.makeRequest = function () {
+    if (this.activeRequest === null && this.pendingRequests.length > 0) {
         this.activeRequest = this.pendingRequests.shift();
         this.activeRequest();
         this.activeRequest = null;
     }
 };
 
-S101Client.prototype.addRequest = function(cb) {
+S101Client.prototype.addRequest = function (cb) {
     this.pendingRequests.push(cb);
     this.makeRequest();
 }
@@ -155,7 +155,7 @@ S101Client.prototype.addRequest = function(cb) {
  * Socket
  *****************************************************/
 
-S101Socket.prototype.connect = function(timeout = 2) {
+S101Socket.prototype.connect = function (timeout = 2) {
     var self = this;
     if (self.status !== "disconnected") {
         return;
@@ -171,6 +171,7 @@ S101Socket.prototype.connect = function(timeout = 2) {
         }, 1000 * timeout);
     }
 
+    self.codec = new S101Codec();
     self.socket = net.createConnection(self.port, self.address, () => {
         winston.debug('socket connected');
 
@@ -178,10 +179,9 @@ S101Socket.prototype.connect = function(timeout = 2) {
             clearTimeout(self._timer);
         }
 
-
-        setInterval(() => {
+        self.keepaliveIntervalTimer = setInterval(() => {
             self.sendKeepaliveRequest();
-        }, 1000 * self.keepaliveInterval );
+        }, 1000 * self.keepaliveInterval);
 
         self.codec.on('keepaliveReq', () => {
             self.sendKeepaliveResponse();
@@ -196,7 +196,7 @@ S101Socket.prototype.connect = function(timeout = 2) {
                 if (root !== undefined) {
                     self.emit('emberTree', root);
                 }
-            } catch(e) {
+            } catch (e) {
                 self.emit("error", e);
             }
         });
@@ -219,20 +219,32 @@ S101Socket.prototype.connect = function(timeout = 2) {
 
 }
 
-S101Socket.prototype.isConnected = function() {
+S101Socket.prototype.isConnected = function () {
     return ((this.socket !== null) && (this.socket !== undefined));
 }
 
-S101Socket.prototype.disconnect = function() {
+S101Socket.prototype.disconnect = function () {
     var self = this;
-    if (self.isConnected()) {
-        self.socket.destroy();
-        self.socket = null;
-        self.status = "disconnected";
-    }
-}
 
-S101Socket.prototype.sendKeepaliveRequest = function() {
+    if (!self.isConnected()) {
+        return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+            self.socket.once('close', () => {
+                self.codec = null;
+                self.socket = null;
+                resolve();
+            });
+            self.socket.once('error', reject);
+            clearInterval(self.keepaliveIntervalTimer);
+            clearTimeout(self._timeout);
+            self.socket.end();
+            self.status = "disconnected";
+        }
+    );
+};
+
+S101Socket.prototype.sendKeepaliveRequest = function () {
     var self = this;
     if (self.isConnected()) {
         self.socket.write(self.codec.keepAliveRequest());
@@ -240,7 +252,7 @@ S101Socket.prototype.sendKeepaliveRequest = function() {
     }
 }
 
-S101Socket.prototype.sendKeepaliveResponse = function() {
+S101Socket.prototype.sendKeepaliveResponse = function () {
     var self = this;
     if (self.isConnected()) {
         self.socket.write(self.codec.keepAliveResponse());
@@ -248,7 +260,7 @@ S101Socket.prototype.sendKeepaliveResponse = function() {
     }
 }
 
-S101Socket.prototype.sendBER = function(data) {
+S101Socket.prototype.sendBER = function (data) {
     var self = this;
     if (self.isConnected()) {
         var frames = self.codec.encodeBER(data);
@@ -258,14 +270,13 @@ S101Socket.prototype.sendBER = function(data) {
     }
 }
 
-S101Socket.prototype.sendBERNode = function(node) {
-    var self=this;
+S101Socket.prototype.sendBERNode = function (node) {
+    var self = this;
     if (!node) return;
     var writer = new BER.Writer();
     node.encode(writer);
     self.sendBER(writer.buffer);
 }
-
 
 
 module.exports = { S101Socket, S101Server, S101Client };

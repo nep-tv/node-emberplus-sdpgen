@@ -14,9 +14,6 @@ fs.readFile("./embrionix.ember", (e, data) => {
         .then(() => {
             console.log("listening");
         })
-        .catch((e) => {
-            console.log(e.stack);
-        })
         .then(() => {
             let tree = new DeviceTree(LOCALHOST, PORT);
             return Promise.resolve()
@@ -33,6 +30,9 @@ fs.readFile("./embrionix.ember", (e, data) => {
                     console.log(e.stack);
                 })
                 .then(() => tree.disconnect())
+        })
+        .catch((e) => {
+            console.log(e.stack);
         })
         .then(() => {
             console.log("close");

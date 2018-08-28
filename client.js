@@ -37,6 +37,7 @@ function S101Client(socket, server) {
 
     self.status = "connected";
 
+    self.codec = new S101Codec();
     self.codec.on('keepaliveReq', () => {
         self.sendKeepaliveResponse();
     });

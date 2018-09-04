@@ -137,6 +137,7 @@ DeviceTree.prototype.getDirectory = function (qnode) {
         qnode = self.root;
     }
     return new Promise((resolve, reject) => {
+        const qpath = qnode.path != null ? qnode.path : qnode.elements['0'].path;
         self.addRequest((error) => {
             if (error) {
                 reject(error);
@@ -148,18 +149,25 @@ DeviceTree.prototype.getDirectory = function (qnode) {
                 self.clearTimeout(); // clear the timeout now. The resolve below may take a while.
                 if (error) {
                     reject(error);
+                    self.finishRequest();
                 }
                 else {
-                    if (self._debug) {
-                        console.log("Received getDirectory response", node);
+                    const nodeElems = node.elements;
+                    if (qpath != null && nodeElems != null && nodeElems.every(el => el.path.startsWith(qpath))) {
+                        if (self._debug) {
+                            console.log('Received getDirectory response', node);
+                        }
+                        resolve(node); // make sure the info is treated before going to next request.
+                        self.finishRequest();
                     }
-                    resolve(node); // make sure the info is treated before going to next request.
                 }
-                self.finishRequest();
             };
 
             if (self._debug) {
                 console.log("Sending getDirectory", qnode);
+            }
+            if (self.callback != null) {
+                console.log('erasing callback');
             }
             self.callback = cb;
             self.client.sendBERNode(qnode.getDirectory());

@@ -43,7 +43,7 @@ function DeviceTree(host, port = 9000) {
 
     self.client.on('emberTree', (root) => {
         if (root instanceof ember.InvocationResult) {
-            self.emit('invocationResult', root)
+            self.emit('invocationResult', root);
             if (self._debug) {
                 console.log("Received InvocationResult", root);
             }
@@ -66,17 +66,17 @@ util.inherits(DeviceTree, EventEmitter);
 var DecodeBuffer = function (packet) {
     var ber = new BER.Reader(packet);
     return ember.Root.decode(ber);
-}
+};
 
 DeviceTree.prototype.saveTree = function (f) {
     var writer = new BER.Writer();
     this.root.encode(writer);
     f(writer.buffer);
-}
+};
 
 DeviceTree.prototype.isConnected = function () {
     return ((this.client !== undefined) && (this.client.isConnected()));
-}
+};
 
 DeviceTree.prototype.connect = function (timeout = 2) {
     return new Promise((resolve, reject) => {
@@ -92,7 +92,7 @@ DeviceTree.prototype.connect = function (timeout = 2) {
         }
         this.client.connect(timeout);
     });
-}
+};
 
 DeviceTree.prototype.expand = function (node) {
     let self = this;
@@ -129,7 +129,7 @@ DeviceTree.prototype.expand = function (node) {
         }
         return p;
     });
-}
+};
 
 function isDirectSubPathOf(path, parent) {
     return path.lastIndexOf('.') === parent.length && path.startsWith(parent)
@@ -187,7 +187,7 @@ DeviceTree.prototype.getDirectory = function (qnode) {
 };
 
 DeviceTree.prototype.invokeFunction = function (fnNode, params) {
-    var self = this
+    var self = this;
     return new Promise((resolve, reject) => {
         self.addRequest((error) => {
             if (error) {
@@ -202,7 +202,7 @@ DeviceTree.prototype.invokeFunction = function (fnNode, params) {
                     reject(error);
                 }
                 else {
-                    if (DEBUG) {
+                    if (self._debug) {
                         console.log("InvocationResult", result);
                     }
                     resolve(result);
@@ -217,13 +217,13 @@ DeviceTree.prototype.invokeFunction = function (fnNode, params) {
             self.client.sendBERNode(fnNode.invoke(params));
         });
     })
-}
+};
 
 DeviceTree.prototype.disconnect = function () {
     if (this.client !== undefined) {
         return this.client.disconnect();
     }
-}
+};
 
 DeviceTree.prototype.makeRequest = function () {
     var self = this;
@@ -248,14 +248,14 @@ DeviceTree.prototype.addRequest = function (cb) {
     var self = this;
     self.pendingRequests.push(cb);
     self.makeRequest();
-}
+};
 
 DeviceTree.prototype.clearTimeout = function () {
     if (this.timeout != null) {
         clearTimeout(this.timeout);
         this.timeout = null;
     }
-}
+};
 
 DeviceTree.prototype.finishRequest = function () {
     var self = this;
@@ -263,13 +263,13 @@ DeviceTree.prototype.finishRequest = function () {
     self.clearTimeout();
     self.activeRequest = null;
     self.makeRequest();
-}
+};
 
 DeviceTree.prototype.timeoutRequest = function (id) {
     var self = this;
     self.root.cancelCallbacks();
     self.activeRequest(new errors.EmberTimeoutError(`Request ${id !== undefined ? id : ""} timed out`));
-}
+};
 
 DeviceTree.prototype.handleRoot = function (root) {
     var self = this;
@@ -294,7 +294,7 @@ DeviceTree.prototype.handleRoot = function (root) {
             callbacks[j]();
         }
     }
-}
+};
 
 DeviceTree.prototype.handleQualifiedNode = function (parent, node) {
     var self = this;
@@ -339,7 +339,7 @@ DeviceTree.prototype.handleQualifiedNode = function (parent, node) {
     //callbacks = parent.update();
 
     return callbacks;
-}
+};
 
 DeviceTree.prototype.handleNode = function (parent, node) {
     var self = this;
@@ -365,7 +365,7 @@ DeviceTree.prototype.handleNode = function (parent, node) {
 
     //console.log('handleNode: ', callbacks);
     return callbacks;
-}
+};
 
 DeviceTree.prototype.getNodeByPath = function (path) {
     var self = this;
@@ -390,7 +390,7 @@ DeviceTree.prototype.getNodeByPath = function (path) {
             });
         });
     });
-}
+};
 
 DeviceTree.prototype.subscribe = function (node, callback) {
     if (node instanceof ember.Parameter && node.isStream()) {
@@ -398,7 +398,7 @@ DeviceTree.prototype.subscribe = function (node, callback) {
     } else {
         node.addCallback(callback);
     }
-}
+};
 
 DeviceTree.prototype.unsubscribe = function (node, callback) {
     if (node instanceof ember.Parameter && node.isStream()) {
@@ -406,7 +406,7 @@ DeviceTree.prototype.unsubscribe = function (node, callback) {
     } else {
         node.addCallback(callback);
     }
-}
+};
 
 DeviceTree.prototype.setValue = function (node, value) {
     var self = this;
@@ -443,7 +443,7 @@ DeviceTree.prototype.setValue = function (node, value) {
             });
         }
     });
-}
+};
 
 function TreePath(path) {
     this.identifiers = [];

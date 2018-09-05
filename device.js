@@ -150,23 +150,27 @@ DeviceTree.prototype.getDirectory = function (qnode) {
             }
 
             let cb = (error, node) => {
-                const qpath = qnode.path != null ? qnode.path : qnode.elements["0"].path;
+                const requestedPath = qnode.path != null ? qnode.path : qnode.elements["0"].path;
                 if (error) {
-                    self.clearTimeout(); // clear the timeout now. The resolve below may take a while.
-                    self.finishRequest(cb);
-                    reject(error);
-                }
-                else {
-                    const nodeElements = node == null ? null : node.elements;
-                    if (nodeElements != null
-                        && nodeElements.every(el => el.path === qpath || isDirectSubPathOf(el.path, qpath))) {
-                        if (self._debug) {
-                            console.log("Received getDirectory response", node);
-                        }
-                        self.clearTimeout(); // clear the timeout now. The resolve below may take a while.
-                        self.finishRequest(cb);
-                        resolve(node); // make sure the info is treated before going to next request.
+                    if (self._debug) {
+                        console.log("Received getDirectory error", error);
                     }
+
+                    self.clearTimeout(); // clear the timeout now. The resolve below may take a while.
+                    self.finishRequest();
+                    reject(error);
+                    return;
+                }
+                const nodeElements = node == null ? null : node.elements;
+                if (nodeElements != null
+                    && nodeElements.every(el => el.path === requestedPath || isDirectSubPathOf(el.path, requestedPath))) {
+                    if (self._debug) {
+                        console.log("Received getDirectory response", node);
+                    }
+
+                    self.clearTimeout(); // clear the timeout now. The resolve below may take a while.
+                    self.finishRequest();
+                    resolve(node); // make sure the info is treated before going to next request.
                 }
             };
 
@@ -253,11 +257,8 @@ DeviceTree.prototype.clearTimeout = function () {
     }
 }
 
-DeviceTree.prototype.finishRequest = function (cb) {
+DeviceTree.prototype.finishRequest = function () {
     var self = this;
-    if (self._debug && cb && cb !== self.callback()) {
-        console.error("BUG!", self.callback);
-    }
     self.callback = undefined;
     self.clearTimeout();
     self.activeRequest = null;

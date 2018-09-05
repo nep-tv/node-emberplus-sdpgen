@@ -177,9 +177,6 @@ DeviceTree.prototype.getDirectory = function (qnode) {
             if (self._debug) {
                 console.log("Sending getDirectory", qnode);
             }
-            if (self._debug && self.callback != null) {
-                console.log("erasing callback");
-            }
             self.callback = cb;
             self.client.sendBERNode(qnode.getDirectory());
         });

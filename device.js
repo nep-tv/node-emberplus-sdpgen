@@ -149,7 +149,7 @@ DeviceTree.prototype.getDirectory = function (qnode) {
                 return;
             }
 
-            let cb = (error, node) => {
+            self.callback = (error, node) => {
                 const requestedPath = qnode.path != null ? qnode.path : qnode.elements["0"].path;
                 if (error) {
                     if (self._debug) {
@@ -177,7 +177,6 @@ DeviceTree.prototype.getDirectory = function (qnode) {
             if (self._debug) {
                 console.log("Sending getDirectory", qnode);
             }
-            self.callback = cb;
             self.client.sendBERNode(qnode.getDirectory());
         });
     });

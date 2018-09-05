@@ -81,6 +81,7 @@ DeviceTree.prototype.isConnected = function () {
 DeviceTree.prototype.connect = function (timeout = 2) {
     return new Promise((resolve, reject) => {
         this.callback = (e) => {
+            this.callback = undefined;
             if (e === undefined) {
                 return resolve();
             }
@@ -130,6 +131,10 @@ DeviceTree.prototype.expand = function (node) {
     });
 }
 
+function isDirectSubPathOf(path, parent) {
+    return path.lastIndexOf('.') === parent.length && path.startsWith(parent)
+}
+
 DeviceTree.prototype.getDirectory = function (qnode) {
     var self = this;
     if (qnode == null) {
@@ -137,28 +142,30 @@ DeviceTree.prototype.getDirectory = function (qnode) {
         qnode = self.root;
     }
     return new Promise((resolve, reject) => {
-        const qpath = qnode.path != null ? qnode.path : qnode.elements['0'].path;
         self.addRequest((error) => {
             if (error) {
-                reject(error);
                 self.finishRequest();
+                reject(error);
                 return;
             }
 
             let cb = (error, node) => {
-                self.clearTimeout(); // clear the timeout now. The resolve below may take a while.
+                const qpath = qnode.path != null ? qnode.path : qnode.elements["0"].path;
                 if (error) {
+                    self.clearTimeout(); // clear the timeout now. The resolve below may take a while.
+                    self.finishRequest(cb);
                     reject(error);
-                    self.finishRequest();
                 }
                 else {
-                    const nodeElems = node.elements;
-                    if (qpath != null && nodeElems != null && nodeElems.every(el => el.path.startsWith(qpath))) {
+                    const nodeElements = node == null ? null : node.elements;
+                    if (nodeElements != null
+                        && nodeElements.every(el => el.path === qpath || isDirectSubPathOf(el.path, qpath))) {
                         if (self._debug) {
-                            console.log('Received getDirectory response', node);
+                            console.log("Received getDirectory response", node);
                         }
+                        self.clearTimeout(); // clear the timeout now. The resolve below may take a while.
+                        self.finishRequest(cb);
                         resolve(node); // make sure the info is treated before going to next request.
-                        self.finishRequest();
                     }
                 }
             };
@@ -166,14 +173,14 @@ DeviceTree.prototype.getDirectory = function (qnode) {
             if (self._debug) {
                 console.log("Sending getDirectory", qnode);
             }
-            if (self.callback != null) {
-                console.log('erasing callback');
+            if (self._debug && self.callback != null) {
+                console.log("erasing callback");
             }
             self.callback = cb;
             self.client.sendBERNode(qnode.getDirectory());
         });
     });
-}
+};
 
 DeviceTree.prototype.invokeFunction = function (fnNode, params) {
     var self = this
@@ -246,8 +253,11 @@ DeviceTree.prototype.clearTimeout = function () {
     }
 }
 
-DeviceTree.prototype.finishRequest = function () {
+DeviceTree.prototype.finishRequest = function (cb) {
     var self = this;
+    if (self._debug && cb && cb !== self.callback()) {
+        console.error("BUG!", self.callback);
+    }
     self.callback = undefined;
     self.clearTimeout();
     self.activeRequest = null;

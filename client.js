@@ -164,46 +164,40 @@ S101Socket.prototype.connect = function (timeout = 2) {
 
     self.emit('connecting');
 
-    if (timeout > 0) {
-        self._timeout = timeout;
-        self._timer = setTimeout(() => {
-            self.socket = undefined;
-            self.emit("error", new Error("connection timeout"));
-        }, 1000 * timeout);
-    }
-
     self.codec = new S101Codec();
-    self.socket = net.createConnection(self.port, self.address, () => {
-        winston.debug('socket connected');
+    self.socket = net.createConnection({
+            port: self.port,
+            host: self.address,
+            timeout: timeout
+        },  
+        () => {
+            winston.debug('socket connected');
 
-        if (self._timer) {
-            clearTimeout(self._timer);
-        }
+            self.keepaliveIntervalTimer = setInterval(() => {
+                self.sendKeepaliveRequest();
+            }, 1000 * self.keepaliveInterval);
 
-        self.keepaliveIntervalTimer = setInterval(() => {
-            self.sendKeepaliveRequest();
-        }, 1000 * self.keepaliveInterval);
+            self.codec.on('keepaliveReq', () => {
+                self.sendKeepaliveResponse();
+            });
 
-        self.codec.on('keepaliveReq', () => {
-            self.sendKeepaliveResponse();
-        });
+            self.codec.on('emberPacket', (packet) => {
+                self.emit('emberPacket', packet);
 
-        self.codec.on('emberPacket', (packet) => {
-            self.emit('emberPacket', packet);
-
-            var ber = new BER.Reader(packet);
-            try {
-                var root = ember.Root.decode(ber);
-                if (root !== undefined) {
-                    self.emit('emberTree', root);
+                var ber = new BER.Reader(packet);
+                try {
+                    var root = ember.Root.decode(ber);
+                    if (root !== undefined) {
+                        self.emit('emberTree', root);
+                    }
+                } catch (e) {
+                    self.emit("error", e);
                 }
-            } catch (e) {
-                self.emit("error", e);
-            }
-        });
+            });
 
-        self.emit('connected');
-    }).on('error', (e) => {
+            self.emit('connected');
+        }
+    ).on('error', (e) => {
         self.emit("error", e);
     });
 

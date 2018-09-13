@@ -27,6 +27,7 @@
     "winston-color": "^1.0.0"
   },
   "devDependencies": {
+    "expect": "^23.6.0",
     "eslint": "^5.5.0",
     "jest": "^23.5.0"
   }

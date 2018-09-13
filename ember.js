@@ -59,8 +59,11 @@ Root.decode = function(ber) {
                         }
                     }
                     catch (e) {
-                        console.log(e.stack);
-                        return r;
+                        if (DEBUG) {
+                            console.log("Decode ERROR", e.stack);
+                            return r;
+                        }
+                        throw e;
                     }
                 }
             } else {
@@ -894,7 +897,13 @@ MatrixContents.decode = function(ber) {
         } else if(tag == BER.CONTEXT(7)) {
             mc.maximumConnectsPerTarget = seq.readInt();
         } else if(tag == BER.CONTEXT(8)) {
-            mc.parametersLocation = seq.readInt();
+            tag = seq.peek();
+            if (tag === BER.EMBER_RELATIVE_OID) {
+                mc.parametersLocation = seq.readRelativeOID(BER.EMBER_RELATIVE_OID); // 13 => relative OID
+            }
+            else {
+                mc.parametersLocation = seq.readInt();
+            }
         } else if(tag == BER.CONTEXT(9)) {
             mc.gainParameterNumber = seq.readInt();
         } else if(tag == BER.CONTEXT(10)) {
@@ -960,7 +969,13 @@ MatrixContents.prototype.encode = function(ber) {
     }
     if (this.parametersLocation !== undefined) {
         ber.startSequence(BER.CONTEXT(8));
-        ber.writeInt(this.parametersLocation);
+        let param = Number(this.parametersLocation)
+        if (isNaN(param)) {
+            ber.writeRelativeOID(this.parametersLocation, BER.EMBER_RELATIVE_OID);
+        }
+        else {
+            ber.writeInt(param);
+        }
         ber.endSequence();
     }
     if (this.gainParameterNumber !== undefined) {

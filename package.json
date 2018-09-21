@@ -1,6 +1,6 @@
 {
   "name": "emberplus",
-  "version": "1.7.14",
+  "version": "1.7.15",
   "description": "Javascript implementation of the Ember+ automation protocol",
   "main": "index.js",
   "scripts": {
@@ -28,7 +28,6 @@
     "winston-color": "^1.0.0"
   },
   "devDependencies": {
-    "expect": "^23.6.0",
     "eslint": "^5.5.0",
     "jest": "^23.5.0"
   }

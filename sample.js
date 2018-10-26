@@ -2,14 +2,17 @@ const Decoder = require('.').Decoder;
 const DeviceTree = require(".").DeviceTree;
 const fs = require("fs");
 
-const LOCALHOST = "127.0.0.1";
-const PORT = 9008;
+const LOCALHOST = "0.0.0.0";
+const PORT = 3336;
 
 fs.readFile("./embrionix.ember", (e, data) => {
     let root = Decoder(data);
 
     const TreeServer = require("./").TreeServer;
     const server = new TreeServer(LOCALHOST, PORT, root);
+    server.on("clientError", (e) => {
+        console.log(e);
+    });
     server.listen()
         .then(() => {
             console.log("listening");

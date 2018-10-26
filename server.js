@@ -45,6 +45,9 @@ function TreeServer(host, port, tree) {
             self.clients.delete(client);
             self.emit('disconnect', client.remoteAddress());
         });
+        client.on("error", error => {
+            self.emit('clientError', { remoteAddress: client.remoteAddress(), error });
+        });
         self.emit('connection', client.remoteAddress());
     });
 

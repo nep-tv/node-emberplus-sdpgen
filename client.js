@@ -257,11 +257,9 @@ S101Socket.prototype.sendKeepaliveResponse = function () {
 
 S101Socket.prototype.sendBER = function (data) {
     var self = this;
-    if (self.isConnected()) {
-        var frames = self.codec.encodeBER(data);
-        for (var i = 0; i < frames.length; i++) {
-            self.socket.write(frames[i]);
-        }
+    var frames = self.codec.encodeBER(data);
+    for (var i = 0; i < frames.length; i++) {
+        self.socket.write(frames[i]);
     }
 }
 

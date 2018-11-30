@@ -150,24 +150,32 @@ DeviceTree.prototype.getDirectory = function (qnode) {
             }
 
             self.callback = (error, node) => {
+                if (node == null) { return; } 
                 if (error) {
                     if (self._debug) {
                         console.log("Received getDirectory error", error);
                     }
-
                     self.clearTimeout(); // clear the timeout now. The resolve below may take a while.
                     self.finishRequest();
                     reject(error);
                     return;
                 }
-                const requestedPath = qnode.path != null ? qnode.path : qnode.elements["0"].path;
+                let requestedPath = qnode.getPath();
+                if (requestedPath === "") {
+                    if (qnode.elements == null || qnode.elements.length === 0) {
+                        if (self._debug) {
+                           console.log("getDirectory response", node);
+                        }
+                        return self.callback(new Error("Invalid qnode for getDirectory"));
+                    }
+                    requestedPath = qnode.elements["0"].getPath();
+                }
                 const nodeElements = node == null ? null : node.elements;
                 if (nodeElements != null
-                    && nodeElements.every(el => el.path === requestedPath || isDirectSubPathOf(el.path, requestedPath))) {
+                    && nodeElements.every(el => el.getPath() === requestedPath || isDirectSubPathOf(el.getPath(), requestedPath))) {
                     if (self._debug) {
                         console.log("Received getDirectory response", node);
                     }
-
                     self.clearTimeout(); // clear the timeout now. The resolve below may take a while.
                     self.finishRequest();
                     resolve(node); // make sure the info is treated before going to next request.

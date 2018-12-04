@@ -823,7 +823,6 @@ MatrixNode.prototype.encode = function(ber) {
             ber.endSequence();
             ber.endSequence();
         }
-
         ber.endSequence();
         ber.endSequence();
     }
@@ -831,9 +830,12 @@ MatrixNode.prototype.encode = function(ber) {
     if (this.connections !== undefined) {
         ber.startSequence(BER.CONTEXT(5));
         ber.startSequence(BER.EMBER_SEQUENCE);
+
         for(var id in this.connections) {
             if (this.connections.hasOwnProperty(id)) {
+                ber.startSequence(BER.CONTEXT(0));
                 this.connections[id].encode(ber);
+                ber.endSequence();
             }
         }
         ber.endSequence();
@@ -1156,7 +1158,6 @@ MatrixConnection.decode = function(ber) {
 }
 
 MatrixConnection.prototype.encode = function(ber) {
-    ber.startSequence(BER.CONTEXT(0));
     ber.startSequence(BER.APPLICATION(16));
 
     ber.startSequence(BER.CONTEXT(0));
@@ -1178,8 +1179,6 @@ MatrixConnection.prototype.encode = function(ber) {
         ber.writeInt(this.disposition.value);
         ber.endSequence();
     }
-
-    ber.endSequence();
     ber.endSequence();
 }
 
@@ -1454,6 +1453,7 @@ QualifiedMatrix.prototype.encode = function(ber) {
 
     if (this.targets !== undefined) {
         ber.startSequence(BER.CONTEXT(3));
+        ber.startSequence(BER.EMBER_SEQUENCE);
 
         for(var i=0; i<this.targets.length; i++) {
             ber.startSequence(BER.CONTEXT(0));
@@ -1466,10 +1466,12 @@ QualifiedMatrix.prototype.encode = function(ber) {
         }
 
         ber.endSequence();
+        ber.endSequence();
     }
 
     if (this.sources !== undefined) {
         ber.startSequence(BER.CONTEXT(4));
+        ber.startSequence(BER.EMBER_SEQUENCE);
 
         for(var i=0; i<this.sources.length; i++) {
             ber.startSequence(BER.CONTEXT(0));
@@ -1482,11 +1484,13 @@ QualifiedMatrix.prototype.encode = function(ber) {
         }
 
         ber.endSequence();
+        ber.endSequence();
     }
 
     if (this.connections !== undefined) {
         ber.startSequence(BER.CONTEXT(5));
         ber.startSequence(BER.EMBER_SEQUENCE);
+
         for(var id in this.connections) {
             if (this.connections.hasOwnProperty(id)) {
                 ber.startSequence(BER.CONTEXT(0));
@@ -1494,6 +1498,7 @@ QualifiedMatrix.prototype.encode = function(ber) {
                 ber.endSequence();
             }
         }
+
         ber.endSequence();
         ber.endSequence();
     }

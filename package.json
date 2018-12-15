@@ -21,12 +21,14 @@
   "license": "MIT",
   "dependencies": {
     "asn1": "evs-broadcast/node-asn1#date_2018_01_02",
+    "axios": "^0.16.2",
     "describe": "^1.2.0",
     "enum": "^2.4.0",
     "fs": "0.0.1-security",
     "long": "^3.2.0",
     "node-windows": "^0.1.14",
     "smart-buffer": "^3.0.3",
+    "sync-request": "^6.0.0",
     "winston": "^2.1.1",
     "winston-color": "^1.0.0"
   },

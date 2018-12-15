@@ -23,6 +23,7 @@
     "asn1": "evs-broadcast/node-asn1#date_2018_01_02",
     "describe": "^1.2.0",
     "enum": "^2.4.0",
+    "fs": "0.0.1-security",
     "long": "^3.2.0",
     "node-windows": "^0.1.14",
     "smart-buffer": "^3.0.3",

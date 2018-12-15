@@ -481,7 +481,8 @@ const parseObj = function(parent, obj) {
     for(let i = 0; i < obj.length; i++) {
         let emberElement;
         let content = obj[i];
-        let number = content.number !== undefined ? content.number : i;
+
+        let number = content.number !== undefined ? content.number : (i+1);
         delete content.number;
         if (content.value !== undefined) {
             emberElement = new ember.Parameter(number);
@@ -542,10 +543,42 @@ const parseObj = function(parent, obj) {
             emberElement.contents = new ember.NodeContents();
         }
         for(let id in content) {
+
             if ((id !== "children") && (content.hasOwnProperty(id))) {
-                emberElement.contents[id] = content[id];
-            }
-            else {
+
+                if ((typeof content[id] === 'object') && content.contents.value == undefined) {
+                    for (let key in content[id]) {
+                        emberElement.contents[key] = content[id][key];
+                    }
+                } else if (content.contents.value !== undefined) {
+                    emberElement = new ember.Parameter(number);
+                    emberElement.contents = new ember.ParameterContents(content.contents.value);
+
+                    if (content.contents.identifier) {
+                        emberElement.contents.identifier = content.contents.identifier;
+                    }
+                    else {
+                        emberElement.contents.identifier = "param" + number;
+                    }
+                    if (content.contents.type) {
+                        emberElement.contents.type = ember.ParameterType.get(content.contents.type);
+                        delete content.contents.type;
+                    }
+                    else {
+                        emberElement.contents.type = ember.ParameterType.string;
+                    }
+                    if (content.contents.access) {
+                        emberElement.contents.access = ember.ParameterAccess.get(content.contents.access);
+                        delete content.contents.access;
+                    }
+                    else {
+                        emberElement.contents.access = ember.ParameterAccess.read;
+                    }
+                } else {
+                    emberElement.contents[id] = content[id];
+                }
+
+            }else {
                 parseObj(emberElement, content.children);
             }
         }

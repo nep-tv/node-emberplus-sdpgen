@@ -99,8 +99,8 @@ S101Codec.prototype.dataIn = function(buf) {
 S101Codec.prototype.handleFrame = function(frame) {
     var self = this;
     if(!validateFrame(frame.toBuffer())) {
-        winston.error('dropping frame of length %d with invalid CRC',
-            frame.length);
+        /*winston.error('dropping frame of length %d with invalid CRC',
+            frame.length);*/
         return;
     }
 

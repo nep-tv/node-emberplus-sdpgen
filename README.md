@@ -1,53 +1,52 @@
-# node-emberplus
+# Node Ember+ SDP Generator
 
 This is an implementation of [Lawo's
-Ember+](https://github.com/Lawo/ember-plus) control protocol for Node.  One of
-Node's great strengths is the ready availability of frameworks for various
-communication protocols and user interfaces; this module allows those to be
-integrated with Ember+ somewhat more easily than the reference libember C++
-implementation.
+Ember+](https://github.com/Lawo/ember-plus) control protocol to advertised ST2110-20 video flows over ember. Using a 
+basic web form you can generate an expressive JSON document that defines an Ember Tree with SDP parameters. These values 
+will be accessible by any Ember+ subscriber over port 9090.
 
-This version support following ember objects : Node, Parameter, Matrix, QualifiedNode,
-QualifiedParameter, QualifiedMatrix, QualifiedFunction.
+It has been primarily designed to quickly generate handmade SDPs for devices that do not support SDP and enable them to 
+be used as Gadgets in Lawo's VSM software. It is a suggested workaround for integrating Sony LSM products into VSM's 
+Network routing layer.     
 
-It has been tested with EVS XT4k and Embrionix IP solutions.
+This is an open source project supported by NEP Australia. Feel free to provide feedback using contacts below.
 
-The current version has added new features to the initial commit but it also modified
-the way the lib is used so that now it uses Promise
+## Supported Use
+This should broadly work on any Node.JS server however has been designed and tested on Node.Js 10.13. It has been tested 
+on Windows 10, Windows Server 2016 and Ubuntu Server 18.04.
 
-Server has been added in version 1.6.0.
+Note: This has been developed as a quick tool and should be tested before use in production. We will update this message 
+after we have run in a production environment. We recommended checking back regularly or watching the GitHub repo for 
+updates. Please contact with any bugs or feature requests.  
 
-## Example usage
+## Roadmap
+Future implementations will include validation of data inputs on configuration utility, verification of SDP to ST2110 
+standard and windows logging for the service. 
 
+Possibly interested in using NMOS to dynamically generate SDPs based on configuration on Sony LSM servers.  
+
+## Contact
+Dan Murphy
+dmurphy@nepgroup.com
+
+## Credits
+Ember+ Server Build from https://github.com/evs-broadcast/node-emberplus
+
+Originally forked from https://github.com/bmayton/node-emberplus
+
+Developed From Idea by Anthony Tunen at Lawo
+
+## Install and usage
+First install NPM if not installed https://www.npmjs.com/get-npm
+
+Use "Install.bat" to install. Then use "SDP Generator.bat" to run service.
+
+##### Run in Node natively 
 ```javascript
-const DeviceTree = require('emberplus').DeviceTree;
-var root;
-var tree = new DeviceTree("10.9.8.7", 9000);
-tree.connect()
-.then(() => { 
-   return tree.getDirectory();
-})
-.then((r) => { 
-   root = r ;
-   return tree.expand(r.elements[0]);
-})
-.then(() => {
-   console.log("done"); 
-})
-.catch((e) => {
-   console.log(e.stack);
-});
+//Install dependencies
+npm install
+
+// Run SDP Generator Ember+ Service and Web Configuration Utility
+node sdpgen.js
 
 
-// Simple packet decoder
-const Decoder = require('emberplus').Decoder;
-const fs = require("fs");
-
-fs.readFile("tree.ember", (e,data) => {
-   var root = Decoder(data);
-});
-
-// Server
-const TreeServer = require("emberplus").TreeServer;
-const server = new TreeServer("127.0.0.1", 9000, root);
-server.listen().then(() => { console.log("listening"); }).catch((e) => { console.log(e.stack); });

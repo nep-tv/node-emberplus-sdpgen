@@ -4,7 +4,7 @@ var Service = require('node-windows').Service;
 var svc = new Service({
     name:'Node SDP Generator',
     description: 'NodeJS SDP Generator for Ember+ Subscribers',
-    script: 'C:\\Node\\node-emberplus-sdpgen\\sdpgen.js',
+    script: 'C:\\Node\\node-emberplus-sdpgen\\lsmsdpgen.js',
     nodeOptions: [
         '--harmony',
         '--max_old_space_size=4096'

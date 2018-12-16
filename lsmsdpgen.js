@@ -33,17 +33,17 @@ axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders')
             var strSDP;
 
             values.forEach(function(sdp) {
+                strSDP = sdp.data;
                 if (sdp.data.includes('exactframerate=25')) {
-                    strSDP = sdp.data.replace(/SSN=ST2110-20:2017/g, "SSN=ST2110-20:2017; interlaced=1");
-                } else {
-                    strSDP = sdp.data;
+                    strSDP = strSDP.replace(/SSN=ST2110-20:2017/g, "SSN=ST2110-20:2017; interlace=1 ");
                 }
+
                 FlowJSON.push('{"contents":{"identifier":"' + flows[sdp.config.url] + '","value":"' + strSDP + '","access":"read","type":"string"}}');
             });
 
             DeviceJSON.push('{"contents":{"isOnline":true,"identifier":"SonyLSM","description":"Sony LSM NMI Server"},"children":[' + FlowJSON +']}');
             let jsonConfig = '[{"contents":{"isOnline":true,"identifier":"TFC","description":"TFC"},"children":[{"contents":{"isOnline":true,"identifier":"SDPGenerator","description":"Node JS SDP Generator"},"children":[' + DeviceJSON + ']}]}]';
-            jsonConfig = jsonConfig.replace(/\n/g, " \\r\\n ");
+            jsonConfig = jsonConfig.replace(/\n/g, " \\r\\n");
             jsonConfig = jsonConfig.replace(/channel1/g, "primary");
             jsonConfig = jsonConfig.replace(/channel2/g, "secondary");
 

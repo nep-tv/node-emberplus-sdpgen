@@ -1,5 +1,7 @@
 // Change this IP Address to LSM Server
 const LSM_SERVER_IP = "192.168.210.102";
+const AUDIO_PACKET_TIME = 0.125;
+const AUDIO_FRAME_COUNT = 6; // Note: Assumption is 48000
 
 // ############################################################
 // ############################################################
@@ -46,6 +48,7 @@ axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders')
             jsonConfig = jsonConfig.replace(/\n/g, " \\r\\n");
             jsonConfig = jsonConfig.replace(/channel1/g, "primary");
             jsonConfig = jsonConfig.replace(/channel2/g, "secondary");
+            jsonConfig = jsonConfig.replace(/a=rtpmap:(\d*) L(\d*)\/(\d*)\/(\d*)/g, "a=rtpmap:$1 L$2/$3/$4 \\r\\na=ts-refclk:localmac=00-0B-72-06-08-77 \\r\\na=mediaclk:direct=0 rate=$3 \\r\\na=clock-domain:local=0 \\r\\na=framecount:" + AUDIO_FRAME_COUNT + " \\r\\na=ptime:" + AUDIO_PACKET_TIME);
 
             var root;
             var tree = new DeviceTree("0.0.0.0", 9090);

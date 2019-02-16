@@ -1,0 +1,25 @@
+{	
+	"contents": {
+		"isOnline": true,
+		"identifier": "SDPoker",
+		"description": "SDPoker SDP Validation"
+	},
+	"children": [
+		{
+			"contents": {
+				"identifier": "SDPoker-input",
+				"value": "",
+				"access": "readWrite",
+				"type": "string"
+			}
+		},
+		{
+			"contents": {
+				"identifier": "SDPoker-output",
+				"value": "",
+				"access": "read",
+				"type": "string"
+			}
+		}
+	]
+}

@@ -41,7 +41,7 @@ Ember+ Server Build from https://github.com/evs-broadcast/node-emberplus
 
 Originally forked from https://github.com/bmayton/node-emberplus
 
-Developed From Idea by Anthony Tunen at Lawo
+Developed From Idea by Anthony Teunen at Lawo
 
 ## Install and usage
 First install NPM if not installed https://www.npmjs.com/get-npm

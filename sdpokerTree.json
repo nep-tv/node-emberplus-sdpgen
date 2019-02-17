@@ -7,7 +7,7 @@
 	"children": [
 		{
 			"contents": {
-				"identifier": "SDPoker-input",
+				"identifier": "SDPoker_input",
 				"value": "",
 				"access": "readWrite",
 				"type": "string"
@@ -15,7 +15,7 @@
 		},
 		{
 			"contents": {
-				"identifier": "SDPoker-output",
+				"identifier": "SDPoker_output",
 				"value": "",
 				"access": "read",
 				"type": "string"

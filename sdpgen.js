@@ -27,9 +27,19 @@ const TreeServer = require(".").TreeServer;
 var jsonConfig = fs.readFileSync('config.json');
 var jsonTree = JSON.parse(jsonConfig);
 var sdpokerTree = JSON.parse(fs.readFileSync('sdpokerTree.json'));
+jsonTree[0].children.push(sdpokerTree);
+
 var sdpmergerTree = JSON.parse(fs.readFileSync('sdpmergerTree.json'));
 
-jsonTree[0].children.push(sdpokerTree);
+let mergerNodeProto = sdpmergerTree.children.pop();
+for (let i = 0; i < 16; i++) {
+    let n = JSON.parse(JSON.stringify(mergerNodeProto));
+    n.contents.identifier += i;
+    n.contents.description += i;
+    n.contents.sdp[1] += i;
+    sdpmergerTree.children.push(n);
+}
+
 jsonTree[0].children.push(sdpmergerTree);
 
 var objEmberTree = TreeServer.JSONtoTree(jsonTree);
@@ -55,24 +65,21 @@ server.listen().then(() => {
 }).catch((e) => { console.log(e.stack); });
 
 server.on("value-change", (element) => {
-    if (element.contents.identifier === "SDPoker-input") {
-        let output = element._parent.getElementByIdentifier("SDPoker-output");
-        let poke = sdpoker.checkST2110(element.contents.value, {});
-        output.update({ contents: { value: poke.map(e => e ? e.message + "\n" : undefined)} });
-    } else if (["SDP-1", "SDP-2", "SDP-3", "SDP-4"].includes(element.contents.identifier)) {
-        let sdp1 = element._parent.getElementByIdentifier("SDP-1").contents.value;
-        let sdp2 = element._parent.getElementByIdentifier("SDP-2").contents.value;
-        let sdp3 = element._parent.getElementByIdentifier("SDP-3").contents.value;
-        let sdp4 = element._parent.getElementByIdentifier("SDP-4").contents.value;
-        let groupedSdp = element._parent.getElementByIdentifier("Merged-SDP");
-        let output = element._parent.contents.sdp.join("\n") + "\n";
-
-        if (sdp1 !== '' && sdp2 !== '' && sdp3 !== '' && sdp4 !== '') {
-            
-            output += stripSdpHeader(sdp1) + stripSdpHeader(sdp2) + stripSdpHeader(sdp3) + stripSdpHeader(sdp4);
-
-            groupedSdp.update({ contents: { value: output } });
+    if (element.contents.identifier === "SDPoker_input") {
+        let output = element._parent.getElementByIdentifier("SDPoker_output");
+        let poke = sdpoker.checkST2110(element.contents.value, {nmos: true});
+        console.log(poke);
+        output.update({ contents: { value: poke.map(e => e ? e.message + "\n" : undefined).join('')} });
+    } else if (element._parent.contents.identifier.startsWith("SDP_merger")) {
+        let sdps = [];
+        for (let c of element._parent.children) {
+            if (!c.contents.identifier.startsWith("Merged")) {
+                sdps.push(c.contents.value);
+            }
         }
+        let groupedSdp = element._parent.getElementByIdentifier("Merged_SDP");
+        let output = element._parent.contents.sdp.join("\n") + "\n" + sdps.map(e => stripSdpHeader(e)).join('');
+        groupedSdp.update({ contents: { value: output } });
 
     }
 });

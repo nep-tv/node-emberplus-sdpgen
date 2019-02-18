@@ -79,7 +79,7 @@ server.on("value-change", (element) => {
         let output = element._parent.contents.header.join("\n");
         for (let c of element._parent.children) {
             if (!c.contents.identifier.startsWith("Mangled") && c.contents.value !== '') {
-                output += "\n" + mangleSdpsForEvs4k(c.contents.value, c.contents.identifier.substr(-1));
+                output += "\n" + mangleSdpsForEvs(c.contents.value, c.contents.identifier.substr(-1), true);
             }
         }
         output += "\n" + element._parent.contents.footer.join("\n");
@@ -89,7 +89,7 @@ server.on("value-change", (element) => {
         let output = element._parent.contents.header.join("\n");
         for (let c of element._parent.children) {
             if (!c.contents.identifier.startsWith("Mangled") && c.contents.value !== '') {
-                output += "\n" + mangleSdpsForEvsSsm(c.contents.value, c.contents.identifier.substr(-1));
+                output += "\n" + mangleSdpsForEvs(c.contents.value, c.contents.identifier.substr(-1));
             }
         }
         output += "\n" + element._parent.contents.footer.join("\n");
@@ -110,19 +110,19 @@ function stripSdpHeader(sdp) {
     return outputArray.join("\n");
 }
 
-function mangleSdpsForEvs4k(sdp, phase) {
+function mangleSdpsForEvs(sdp, phase, sdp_is_4k = false) {
     let lines = sdp.split("\n");
     let outputArray = [];
     let headerDone = false;
     for (let l of lines) {
         if (l.startsWith("m=") && !headerDone) { headerDone = true; }
-        if (l.startsWith("a=ts-refclk")) { continue; }
-        else if (l.startsWith("a=mediaclk")) { continue; }
+        if (sdp_is_4k && l.startsWith("a=ts-refclk")) { continue; }
+        else if (sdp_is_4k && l.startsWith("a=mediaclk")) { continue; }
         else if (l.startsWith("a=mid:primary")) { 
             outputArray.push("a=mid:" + phase); 
             break;
         }
-        else if (l.startsWith("a=fmtp")) {
+        else if (sdp_is_4k && l.startsWith("a=fmtp")) {
             l = l.replace("width=1920;", "width=3840;");
             l = l.replace("height=1080;", "height=2160;");
             outputArray.push(l);
@@ -130,22 +130,6 @@ function mangleSdpsForEvs4k(sdp, phase) {
         else if (headerDone && l !== '') { outputArray.push(l); }
     }
 
-    return outputArray.join("\n");
-}
-
-function mangleSdpsForEvsSsm(sdp, phase) {
-    let lines = sdp.split("\n");
-    let outputArray = [];
-    let headerDone = false;
-    for (let l of lines) {
-        if (l.startsWith("m=") && !headerDone) { headerDone = true; }
-        if (l.startsWith("a=mid:primary")) { 
-            outputArray.push("a=mid:" + phase); 
-            break;
-        }
-        else if (headerDone && l !== '') { outputArray.push(l); }
-    }
-    
     return outputArray.join("\n");
 }
 

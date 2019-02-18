@@ -66,9 +66,9 @@ server.listen().then(() => {
 
 server.on("value-change", (element) => {
     if (element.contents.identifier === "SDPoker_input") {
+        if (element.contents.value === '') { return; }
         let output = element._parent.getElementByIdentifier("SDPoker_output");
         let poke = sdpoker.checkST2110(element.contents.value, {nmos: true});
-        console.log(poke);
         output.update({ contents: { value: poke.map(e => e ? e.message + "\n" : undefined).join('')} });
     } else if (element._parent.contents.identifier.startsWith("SDP_merger")) {
         let sdps = [];

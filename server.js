@@ -193,7 +193,7 @@ TreeServer.prototype.handleNode = function(client, node) {
         if (this._debug) { console.log(`setValue for element at path ${path} with value ${cmd.contents.value}`); }
         this.setValue(element, cmd.contents.value, client);
         let res = this.getResponse(element);
-        client.sendBERNode(res)
+        client.sendBERNode(res);
         this.updateSubscribers(element.getPath(), res, client);
     }
     else {
@@ -213,8 +213,8 @@ TreeServer.prototype.handleQualifiedParameter = function(client, element, parame
 {
     if (parameter.contents.value !== undefined) {
         this.setValue(element, parameter.contents.value, client);
-        let res = this.getQualifiedResponse(element);
-        client.sendBERNode(res)
+        let res = this.getQualifiedResponse(element._parent);
+        client.sendBERNode(res);
         this.updateSubscribers(element.getPath(), res, client);
     }
 }
@@ -367,6 +367,7 @@ TreeServer.prototype.getQualifiedResponse = function(element) {
         }
     }
     res.elements = [dup];
+    console.log(res);
     return res;
 }
 

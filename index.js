@@ -62,7 +62,7 @@ axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders')
 		var jsonConfigFile = fs.readFileSync('config.json');
 		var jsonTree = JSON.parse(jsonConfigFile);
 		if (lsmConfig !== '') {
-			jsonTree[0].children.unshift(JSON.parse(lsmConfig));
+			jsonTree[0].children[0].children.unshift(JSON.parse(lsmConfig));
 		}
 
 		// Add SDPoker node

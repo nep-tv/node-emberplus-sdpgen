@@ -367,7 +367,6 @@ TreeServer.prototype.getQualifiedResponse = function(element) {
         }
     }
     res.elements = [dup];
-    console.log(res);
     return res;
 }
 

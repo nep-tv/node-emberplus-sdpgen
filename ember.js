@@ -2427,7 +2427,8 @@ ParameterContents.prototype.encode = function(ber) {
     ber.writeIfDefinedEnum(this.type, ParameterType, ber.writeInt, 13);
     ber.writeIfDefined(this.streamIdentifier, ber.writeInt, 14);
 
-    if(this.emumMap !== undefined) {
+    if(this.enumMap !== undefined) {
+        console.log(this.enumMap);
         ber.startSequence(BER.CONTEXT(15));
         StringIntegerCollection.encode(ber, this.enumMap);
         ber.endSequence();

@@ -1,41 +1,85 @@
 const DeviceTree = require('.').DeviceTree;
+const TreeServer = require(".").TreeServer;
 const fs = require('fs');
 const http = require('http');
 const sdpoker = require('sdpoker');
+const axios = require('axios');
+const request = require('sync-request');
+
+// Change this IP Address to LSM Server
+const LSM_SERVER_IP = "192.168.210.102";
+const AUDIO_PACKET_TIME = 0.125;
+const AUDIO_FRAME_COUNT = 6; // Note: Assumption is 48000
+
 const sdp_parsers = 16;
 
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
-var root;
-var tree = new DeviceTree("0.0.0.0", 9090);
-const ember = require('./ember.js');
-tree.connect()
-    .then(() => {
-        return tree.getDirectory();
+let lsmConfig = '';
+
+axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders')
+    .then(response => {
+
+        let promises = [];
+        let flows = [];
+
+        let i=0;
+        response.data.forEach(function(sender) {
+
+            promises[i] = axios.get(sender.manifest_href);
+            flows[sender.manifest_href] = sender.label;
+            i++;
+        });
+
+        Promise.all(promises).then(function(values) {
+
+            var FlowJSON = [];
+            var DeviceJSON = [];
+            var strSDP;
+
+            values.forEach(function(sdp) {
+                strSDP = sdp.data;
+                if (sdp.data.includes('exactframerate=25')) {
+                    strSDP = strSDP.replace(/SSN=ST2110-20:2017/g, "SSN=ST2110-20:2017; interlace=1 ");
+                }
+
+                FlowJSON.push('{"contents":{"identifier":"' + flows[sdp.config.url] + '","value":"' + strSDP + '","access":"read","type":"string"}}');
+            });
+
+            DeviceJSON.push('{"contents":{"isOnline":true,"identifier":"SonyLSM","description":"Sony LSM NMI Server"},"children":[' + FlowJSON +']}');
+            lsmConfig = '[{"contents":{"isOnline":true,"identifier":"TFC","description":"TFC"},"children":[{"contents":{"isOnline":true,"identifier":"SDPGenerator","description":"Node JS SDP Generator"},"children":[' + DeviceJSON + ']}]}]';
+            lsmConfig = lsmConfig.replace(/\n/g, " \\r\\n");
+            lsmConfig = lsmConfig.replace(/channel1/g, "primary");
+            lsmConfig = lsmConfig.replace(/channel2/g, "secondary");
+            lsmConfig = lsmConfig.replace(/a=rtpmap:(\d*) L(\d*)\/(\d*)\/(\d*)/g, "a=rtpmap:$1 L$2/$3/$4 \\r\\na=ts-refclk:localmac=00-0B-72-06-08-77 \\r\\na=mediaclk:direct=0 rate=$3 \\r\\na=clock-domain:local=0 \\r\\na=framecount:" + AUDIO_FRAME_COUNT + " \\r\\na=ptime:" + AUDIO_PACKET_TIME);
+
+
+        });
+
     })
-    .then((r) => {
-        root = r ;
-        return tree.expand(r.elements[0]);
-    })
-    .then(() => {
-        console.log("Ember Initialised");
-    })
-    .catch((e) => {
-        console.log(e.stack);
+    .catch(error => {
+        console.log(error);
     });
 
+
 // Server
-const TreeServer = require(".").TreeServer;
-var jsonConfig = fs.readFileSync('config.json');
-var jsonTree = JSON.parse(jsonConfig);
+
+var jsonConfigFile = fs.readFileSync('config.json');
+var jsonTree = JSON.parse(jsonConfigFile);
+if (lsmConfig !== '') {
+    jsonTree[0].children.unshift(JSON.parse(lsmConfig));
+}
+
+// Add SDPoker node
 var sdpokerTree = JSON.parse(fs.readFileSync('sdpokerTree.json'));
 jsonTree[0].children.push(sdpokerTree);
 
-var sdpmergerTree = JSON.parse(fs.readFileSync('sdpmergerTree.json'));
-for (let i = 0; i < sdpmergerTree.children.length; i++) {
-    sdpmergerTree.children[i].children = generateChildren(sdpmergerTree.children[i].children[0]);
+// Add SDP parser node
+var sdpParserTree = JSON.parse(fs.readFileSync('sdpParserTree.json'));
+for (let i = 0; i < sdpParserTree.children.length; i++) {
+    sdpParserTree.children[i].children = generateChildren(sdpParserTree.children[i].children[0]);
 }
-
-jsonTree[0].children.push(sdpmergerTree);
+jsonTree[0].children.push(sdpParserTree);
 
 var objEmberTree = TreeServer.JSONtoTree(jsonTree);
 
@@ -43,7 +87,6 @@ const server = new TreeServer("0.0.0.0", 9090, objEmberTree);
 
 server.listen().then(() => {
     console.log("Ember+ Server Started at TCP 0.0.0.0:9090");
-
 
     httpserver = http.createServer( function(req, res) {
         var html = fs.readFileSync('form.html');

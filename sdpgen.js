@@ -2,9 +2,7 @@ const DeviceTree = require('.').DeviceTree;
 const fs = require('fs');
 const http = require('http');
 const sdpoker = require('sdpoker');
-const sdp_mergers = 16;
-const evs_4k_manglers = 16;
-const evs_superslow_manglers = 16;
+const sdp_parsers = 16;
 
 
 var root;
@@ -33,7 +31,9 @@ var sdpokerTree = JSON.parse(fs.readFileSync('sdpokerTree.json'));
 jsonTree[0].children.push(sdpokerTree);
 
 var sdpmergerTree = JSON.parse(fs.readFileSync('sdpmergerTree.json'));
-sdpmergerTree.children = generateChildren(sdpmergerTree.children);
+for (let i = 0; i < sdpmergerTree.children.length; i++) {
+    sdpmergerTree.children[i].children = generateChildren(sdpmergerTree.children[i].children[0]);
+}
 
 jsonTree[0].children.push(sdpmergerTree);
 
@@ -133,24 +133,10 @@ function mangleSdpsForEvs(sdp, phase, sdp_is_4k = false) {
     return outputArray.join("\n");
 }
 
-function generateChildren(children) {
+function generateChildren(child) {
     let newChildren = [];
-    for (let i = 0; i < sdp_mergers; i++) {
-        let n = JSON.parse(JSON.stringify(children[0]));
-        n.contents.identifier += i;
-        n.contents.description += i;
-        n.contents.header[1] += i;
-        newChildren.push(n);
-    }
-    for (let i = 0; i < evs_4k_manglers; i++) {
-        let n = JSON.parse(JSON.stringify(children[1]));
-        n.contents.identifier += i;
-        n.contents.description += i;
-        n.contents.header[1] += i;
-        newChildren.push(n);
-    }
-    for (let i = 0; i < evs_superslow_manglers; i++) {
-        let n = JSON.parse(JSON.stringify(children[2]));
+    for (let i = 0; i < sdp_parsers; i++) {
+        let n = JSON.parse(JSON.stringify(child));
         n.contents.identifier += i;
         n.contents.description += i;
         n.contents.header[1] += i;

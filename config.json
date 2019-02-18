@@ -7,6 +7,7 @@
 		},
 		"children": [
 			{
+				"number": 100,
 				"contents": {
 					"isOnline": true,
 					"identifier": "SDPGenerator",

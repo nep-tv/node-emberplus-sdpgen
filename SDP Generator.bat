@@ -1,3 +1,3 @@
 @echo off
 
-node sdpgen.js
+node index

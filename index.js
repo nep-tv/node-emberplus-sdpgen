@@ -5,7 +5,7 @@ const sdpoker = require('sdpoker');
 const axios = require('axios');
 
 // Change this IP Address to LSM Server
-const LSM_SERVER_IP = "192.168.210.102";
+const LSM_SERVER_IP = "192.168.110.102";
 const AUDIO_PACKET_TIME = 0.125;
 const AUDIO_FRAME_COUNT = 6; // Note: Assumption is 48000
 
@@ -17,8 +17,8 @@ let lsmConfig = '';
 
 console.log("Attempting to connect to LSM...");
 axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders')
-    .then(response => {
-
+    .then( async (response) => {
+	
         let promises = [];
         let flows = [];
 
@@ -29,9 +29,9 @@ axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders')
             flows[sender.manifest_href] = sender.label;
             i++;
         });
-
-        Promise.all(promises).then(function(values) {
-
+		
+        await Promise.all(promises).then(function(values) {
+			
             var FlowJSON = [];
             var DeviceJSON = [];
             var strSDP;
@@ -45,14 +45,12 @@ axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders')
                 FlowJSON.push('{"contents":{"identifier":"' + flows[sdp.config.url] + '","value":"' + strSDP + '","access":"read","type":"string"}}');
             });
 
-            DeviceJSON.push('{"contents":{"isOnline":true,"identifier":"SonyLSM","description":"Sony LSM NMI Server"},"children":[' + FlowJSON +']}');
-            lsmConfig = '[{"contents":{"isOnline":true,"identifier":"TFC","description":"TFC"},"children":[{"contents":{"isOnline":true,"identifier":"SDPGenerator","description":"Node JS SDP Generator"},"children":[' + DeviceJSON + ']}]}]';
+            lsmConfig = '{"contents":{"isOnline":true,"identifier":"SonyLSM","description":"Sony LSM NMI Server"},"children":[' + FlowJSON +']}'; 
             lsmConfig = lsmConfig.replace(/\n/g, " \\r\\n");
             lsmConfig = lsmConfig.replace(/channel1/g, "primary");
             lsmConfig = lsmConfig.replace(/channel2/g, "secondary");
             lsmConfig = lsmConfig.replace(/a=rtpmap:(\d*) L(\d*)\/(\d*)\/(\d*)/g, "a=rtpmap:$1 L$2/$3/$4 \\r\\na=ts-refclk:localmac=00-0B-72-06-08-77 \\r\\na=mediaclk:direct=0 rate=$3 \\r\\na=clock-domain:local=0 \\r\\na=framecount:" + AUDIO_FRAME_COUNT + " \\r\\na=ptime:" + AUDIO_PACKET_TIME);
-
-
+			
         });
 
     })
@@ -60,6 +58,7 @@ axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders')
         console.log(error);
 	})
 	.then(e => {
+		
 		var jsonConfigFile = fs.readFileSync('config.json');
 		var jsonTree = JSON.parse(jsonConfigFile);
 		if (lsmConfig !== '') {
@@ -76,7 +75,7 @@ axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders')
 			sdpParserTree.children[i].children = makeMoreChildren(sdpParserTree.children[i].children[0]);
 		}
 		jsonTree[0].children.push(sdpParserTree);
-
+		
 		var objEmberTree = TreeServer.JSONtoTree(jsonTree);
 
 		const server = new TreeServer("0.0.0.0", 9090, objEmberTree);

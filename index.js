@@ -3,6 +3,17 @@ const fs = require('fs');
 const http = require('http');
 const sdpoker = require('sdpoker');
 const axios = require('axios');
+const vm = require('vm');
+let vscript;
+let MultiConnection;
+let hasVscript = false;
+if (require.resolve('vscript/common/api/api_base')) {
+    vscript = require('vscript/common/api/api_base');
+    MultiConnection = require('vscript/common/multi_connection');
+    hasVscript = true;
+    MultiConnection.initialize("Running from NodeJS SDP Gen!", "Ember+ Triggered script execution");
+}
+
 
 // Change this IP Address to LSM Server
 const LSM_SERVER_IP = "192.168.110.102";
@@ -14,6 +25,10 @@ const sdp_parsers = 16;
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 let lsmConfig = '';
+let scriptNode;
+
+if (hasVscript) { scriptNode = loadScripts(); }
+
 
 console.log("Attempting to connect to LSM...");
 axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders', { timeout: 3000 })
@@ -73,7 +88,9 @@ axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders', { timeout: 3000 
 		for (let i = 0; i < sdpParserTree.children.length; i++) {
 			sdpParserTree.children[i].children = makeMoreChildren(sdpParserTree.children[i].children[0]);
 		}
-		jsonTree[0].children.push(sdpParserTree);
+        jsonTree[0].children.push(sdpParserTree);
+        
+        if (hasVscript) { jsonTree[0].children.push(scriptNode); }
 		
 		var objEmberTree = TreeServer.JSONtoTree(jsonTree);
 
@@ -125,14 +142,85 @@ axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders', { timeout: 3000 
 				output += element._parent.contents.footer.join("\n");
 				let groupedSdp = element._parent.getElementByIdentifier("Merged_SDP");
 				groupedSdp.update({ contents: { value: output } });
-			}
+            }
+            else if (element.contents.identifier === "execute_script") {
+                element._parent.getElementByIdentifier("result").update({ contents: {value: "Starting script: " + element._parent.children[0].contents.value} });
+                let resultParameter = element._parent.getElementByIdentifier("result");
+                let sandbox = {
+                    result: (r) => {
+                        resultParameter.update({ contents: {value: r } });
+                        let res = server.getResponse(resultParameter._parent);
+                        server.updateSubscribers(resultParameter.getPath(), res, this);
+                    },
+                    vscript: vscript,
+                };
+                element._parent.contents.script.runInNewContext(sandbox);
+                element.update({ contents: { value: false } });
+            }
 		});
 	});
 
+function loadScripts() {
+    let files = fs.readdirSync("./Scripts/");
+    if (files.length === 0) { return null; }
 
-// Server
+    let scriptNode = {
+        number: 400,
+        contents: {
+            isOnline: true,
+            identifier: "script_execution",
+            description: "Script Execution",
+        },
+        children: []
+    };
+    let scriptNodeChildProto = {
+        contents: {
+            identifier: "",
+            description: "",
+            script: null,
+        },
+        children: [
+            {
+                contents: {
+                    identifier: "script_name",
+                    value: "",
+                    access: "read",
+                    type: "string"
+                }
+            },
+            {
+                contents: {
+                    identifier: "execute_script",
+                    value: false,
+                    access: "readWrite",
+                    type: "trigger"
+                }
+            },
+            {
+                contents: {
+                    identifier: "result",
+                    value: "",
+                    acces: "read",
+                    type: "string"
+                }
+            }
+        ]
+    }
 
+    let i = 0;
+    for (let f of files) {
+        let node = JSON.parse(JSON.stringify(scriptNodeChildProto));
+        let contents = fs.readFileSync("./Scripts/" + f);
+        node.contents.script = new vm.Script(contents);
+        node.children[0].contents.value = f;
+        node.contents.description = "Script " + i;
+        node.contents.identifier = "script_" + i;
+        i++;
+        scriptNode.children.push(node);
+    }
 
+    return scriptNode;
+}
 
 
 function stripSdpHeader(sdp) {

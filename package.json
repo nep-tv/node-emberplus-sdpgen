@@ -31,7 +31,8 @@
     "smart-buffer": "^3.0.3",
     "sync-request": "^6.0.0",
     "winston": "^2.1.1",
-    "winston-color": "^1.0.0"
+    "winston-color": "^1.0.0",
+    "vscript": "file:./node_modules/vscript"
   },
   "devDependencies": {
     "eslint": "^5.5.0",

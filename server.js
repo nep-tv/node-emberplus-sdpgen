@@ -192,7 +192,7 @@ TreeServer.prototype.handleNode = function(client, node) {
         (cmd.contents !== undefined) && (cmd.contents.value !== undefined)) {
         if (this._debug) { console.log(`setValue for element at path ${path} with value ${cmd.contents.value}`); }
         this.setValue(element, cmd.contents.value, client);
-        let res = this.getResponse(element);
+        let res = this.getResponse(element._parent);
         client.sendBERNode(res);
         this.updateSubscribers(element.getPath(), res, client);
     }

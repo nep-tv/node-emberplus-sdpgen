@@ -16,7 +16,7 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 let lsmConfig = '';
 
 console.log("Attempting to connect to LSM...");
-axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders')
+axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders', { timeout: 3000 })
     .then( async (response) => {
 	
         let promises = [];
@@ -183,7 +183,7 @@ function makeMoreChildren(child) {
         let n = JSON.parse(JSON.stringify(child));
         n.contents.identifier += i;
         n.contents.description += i;
-        n.contents.header[1] += i;
+        n.contents.header[2] += i;
         newChildren.push(n);
     }
     return newChildren;

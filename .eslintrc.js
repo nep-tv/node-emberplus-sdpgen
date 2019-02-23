@@ -6,14 +6,14 @@ module.exports = {
     },
     "extends": "eslint:recommended",
     "parserOptions": {
-        "ecmaVersion": 2015
+        "ecmaVersion": 2017
     },
     "rules": {
         "no-unused-vars": "warn",
         "no-undef": "warn",
         "no-redeclare": "warn",
         "no-extra-semi": "warn",
-        "no-console": "warn",
+        "no-console": "off",
         "semi-style":
             [
                 "error",

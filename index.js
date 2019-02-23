@@ -33,7 +33,6 @@ axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders', { timeout: 3000 
         await Promise.all(promises).then(function(values) {
 			
             var FlowJSON = [];
-            var DeviceJSON = [];
             var strSDP;
 
             values.forEach(function(sdp) {
@@ -57,7 +56,7 @@ axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders', { timeout: 3000 
     .catch(error => {
         console.log(error);
 	})
-	.then(e => {
+	.then(() => {
 		
 		var jsonConfigFile = fs.readFileSync('config.json');
 		var jsonTree = JSON.parse(jsonConfigFile);
@@ -96,41 +95,35 @@ axios.get('https://'+LSM_SERVER_IP+'/x-nmos/node/v1.1/senders', { timeout: 3000 
 
 		}).catch((e) => { console.log(e.stack); });
 
+		//server._debug = true;
 		server.on("value-change", (element) => {
 			if (element.contents.identifier === "SDPoker_input") {
 				if (element.contents.value === '') { return; }
 				let output = element._parent.getElementByIdentifier("SDPoker_output");
 				let poke = sdpoker.checkST2110(element.contents.value, {nmos: true});
 				output.update({ contents: { value: poke.map(e => e ? e.message + "\n" : undefined).join('')} });
-			} else if (element._parent.contents.identifier.startsWith("SDP_merger")) {
-				let output = element._parent.contents.header.join("\n") + "\n";
+			} 
+			else if (element._parent.contents.mergerType > 0) { // If parameter is part of an SDP merger node
+				let output = element._parent.contents.header.join("\n");
 				for (let c of element._parent.children) {
-					if (!c.contents.identifier.startsWith("Merged") && c.contents.value !== '') {
-						output += stripSdpHeader(c.contents.value) + "\n";
+					if (c.number > 1 && c.contents.value !== '') {
+						switch (element._parent.contents.mergerType) {
+							case 1: // Standard merger
+								output +=  "\n" + stripSdpHeader(c.contents.value);
+								break;
+							case 2: // EVS 4K mangler
+								output += "\n" + mangleSdpsForEvs(c.contents.value, c.contents.identifier.substr(-1), true);
+								break;
+							case 3: // EVS SSM mangler
+								output += "\n" + mangleSdpsForEvs(c.contents.value, c.contents.identifier.substr(-1));
+								break;
+							default:
+								return false;
+						}
 					}
 				}
 				output += element._parent.contents.footer.join("\n");
 				let groupedSdp = element._parent.getElementByIdentifier("Merged_SDP");
-				groupedSdp.update({ contents: { value: output } });
-			} else if (element._parent.contents.identifier.startsWith("EVS_4K")) {
-				let output = element._parent.contents.header.join("\n");
-				for (let c of element._parent.children) {
-					if (!c.contents.identifier.startsWith("Mangled") && c.contents.value !== '') {
-						output += "\n" + mangleSdpsForEvs(c.contents.value, c.contents.identifier.substr(-1), true);
-					}
-				}
-				output += "\n" + element._parent.contents.footer.join("\n");
-				let groupedSdp = element._parent.getElementByIdentifier("Mangled_SDP");
-				groupedSdp.update({ contents: { value: output } });
-			} else if (element._parent.contents.identifier.startsWith("EVS_SSM")) {
-				let output = element._parent.contents.header.join("\n");
-				for (let c of element._parent.children) {
-					if (!c.contents.identifier.startsWith("Mangled") && c.contents.value !== '') {
-						output += "\n" + mangleSdpsForEvs(c.contents.value, c.contents.identifier.substr(-1));
-					}
-				}
-				output += "\n" + element._parent.contents.footer.join("\n");
-				let groupedSdp = element._parent.getElementByIdentifier("Mangled_SDP");
 				groupedSdp.update({ contents: { value: output } });
 			}
 		});
